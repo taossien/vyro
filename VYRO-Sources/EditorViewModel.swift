@@ -25,6 +25,8 @@ final class EditorViewModel: ObservableObject {
     @Published var stabilizationEnabled = false
     @Published var isAnalyzing = false
     @Published var debugInfo = ""
+    @Published private(set) var canUndo = false
+    @Published private(set) var canRedo = false
     @Published var analysisProgress: Double = 0
 
     @Published var isExporting = false
@@ -38,6 +40,9 @@ final class EditorViewModel: ObservableObject {
     private var timeObserver: Any?
     private var endObserver: NSObjectProtocol?
     private var rebuildTask: Task<Void, Never>?
+    private var undoStack: [ClipModel] = []
+    private var redoStack: [ClipModel] = []
+    private var lastUndoRecord = Date.distantPast
     private var statusObservation: NSKeyValueObservation?
 
     init(project: ProjectModel? = nil) {
@@ -93,8 +98,54 @@ final class EditorViewModel: ObservableObject {
 
     private func mutateClip(_ change: (inout ClipModel) -> Void) {
         guard !project.tracks.isEmpty, !project.tracks[0].clips.isEmpty else { return }
+        let before = project.tracks[0].clips[0]
         change(&project.tracks[0].clips[0])
+        if project.tracks[0].clips[0] != before { recordUndo(before) }
         persist()
+    }
+
+    /// Les changements rapprochés (glisser un curseur) forment une seule étape d'annulation.
+    private func recordUndo(_ snapshot: ClipModel) {
+        let now = Date()
+        if now.timeIntervalSince(lastUndoRecord) > 0.6 || undoStack.isEmpty {
+            undoStack.append(snapshot)
+            if undoStack.count > 50 { undoStack.removeFirst() }
+        }
+        lastUndoRecord = now
+        redoStack.removeAll()
+        refreshUndoState()
+    }
+
+    private func refreshUndoState() {
+        canUndo = !undoStack.isEmpty
+        canRedo = !redoStack.isEmpty
+    }
+
+    func undo() {
+        guard let previous = undoStack.popLast(), !project.tracks.isEmpty, !project.tracks[0].clips.isEmpty else { return }
+        redoStack.append(project.tracks[0].clips[0])
+        restore(previous)
+    }
+
+    func redo() {
+        guard let next = redoStack.popLast(), !project.tracks.isEmpty, !project.tracks[0].clips.isEmpty else { return }
+        undoStack.append(project.tracks[0].clips[0])
+        restore(next)
+    }
+
+    private func restore(_ clip: ClipModel) {
+        project.tracks[0].clips[0] = clip
+        speed = min(max(clip.speed, VideoPipeline.minSpeed), VideoPipeline.maxSpeed)
+        stabilizationEnabled = clip.stabilizationEnabled == true
+        if stabilizationEnabled, stabilizationData == nil {
+            stabilizationData = ProjectStore.loadStabilization(for: clip.mediaFileName)
+            if stabilizationData == nil { stabilizationEnabled = false }
+        }
+        if let id = selectedEffectID, !clip.effects.contains(where: { $0.id == id }) { selectedEffectID = nil }
+        lastUndoRecord = .distantPast
+        refreshUndoState()
+        persist()
+        scheduleRebuild()
     }
 
     private func persist() {
@@ -121,6 +172,7 @@ final class EditorViewModel: ObservableObject {
                 speed = 1
                 stabilizationEnabled = false
                 stabilizationData = nil
+                undoStack.removeAll(); redoStack.removeAll(); refreshUndoState()
                 selectedEffectID = nil
                 hasClip = true
                 persist()
@@ -254,6 +306,18 @@ final class EditorViewModel: ObservableObject {
         effect.duration = min(effect.duration, max(duration - effect.start, 0.1))
         mutateClip { $0.effects.append(effect) }
         selectedEffectID = effect.id
+        scheduleRebuild()
+    }
+
+    func duplicateEffect(id: UUID) {
+        guard let original = effects.first(where: { $0.id == id }), duration > 0 else { return }
+        var copy = original
+        copy.id = UUID()
+        copy.start = min(original.end, max(duration - 0.1, 0))
+        copy.duration = min(original.duration, max(duration - copy.start, 0.1))
+        if copy.type == .shake { copy.parameters["seed"] = Double(Int.random(in: 1...9999)) }
+        mutateClip { $0.effects.append(copy) }
+        selectedEffectID = copy.id
         scheduleRebuild()
     }
 

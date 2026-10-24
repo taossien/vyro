@@ -1,13 +1,18 @@
 //
 //  EditorView.swift
-//  Écran principal : aperçu, lecture, timeline d'effets, vitesse, stabilisation, export.
+//  Éditeur : aperçu tactile, timeline visuelle, barre d'outils en bas,
+//  réglages qui n'apparaissent que pour l'outil choisi.
 //
 
 import SwiftUI
 import AVFoundation
+import UIKit
 
 struct EditorView: View {
     @StateObject private var vm: EditorViewModel
+    @State private var panel: ToolPanel?
+
+    enum ToolPanel { case speed, stabilization }
 
     init(project: ProjectModel? = nil) {
         _vm = StateObject(wrappedValue: EditorViewModel(project: project))
@@ -18,26 +23,16 @@ struct EditorView: View {
             VStack(spacing: 0) {
                 preview
                     .frame(height: geo.size.height * 0.40)
-                controls
-                ScrollView {
-                    VStack(spacing: 18) {
-                        EffectTimeline(
-                            effects: vm.effects,
-                            duration: vm.duration,
-                            playhead: vm.playhead,
-                            selected: vm.selectedEffectID,
-                            speedMarks: vm.speedMarks
-                        )
-                        addButtons
-                        effectList
-                        inspector
-                        speedSection
-                        rampSection
-                        stabilizationSection
-                        infoBar
-                    }
-                    .padding()
-                }
+                transport
+                EditorTimeline(vm: vm, onSelectEffect: { id in
+                    panel = nil
+                    vm.selectEffect(id: id)
+                })
+                .padding(.horizontal, 12)
+                .padding(.top, 8)
+                contextPanel
+                    .frame(maxHeight: .infinity, alignment: .top)
+                toolbar
             }
         }
         .background(Theme.background.ignoresSafeArea())
@@ -56,9 +51,9 @@ struct EditorView: View {
                 Button {
                     vm.showImporter = true
                 } label: {
-                    Image(systemName: "square.and.arrow.down")
+                    Image(systemName: "plus.rectangle.on.rectangle")
                 }
-                .accessibilityLabel("Importer un clip")
+                .accessibilityLabel("Changer de vidéo")
             }
         }
         .sheet(isPresented: $vm.showImporter) {
@@ -84,24 +79,43 @@ struct EditorView: View {
         .onDisappear { vm.stop() }
     }
 
-    // MARK: Aperçu et lecture
+    // MARK: Aperçu (toucher pour lancer / mettre en pause)
 
     private var preview: some View {
         GeometryReader { geo in
             ZStack {
-                if let player = vm.player {
+                if let player = vm.player, vm.hasClip {
                     PlayerContainerView(player: player)
                         .frame(width: geo.size.width, height: geo.size.height)
+                        .contentShape(Rectangle())
+                        .onTapGesture { vm.togglePlayback() }
+                    if !vm.isPlaying {
+                        Image(systemName: "play.fill")
+                            .font(.system(size: 34))
+                            .foregroundColor(.white.opacity(0.85))
+                            .padding(22)
+                            .background(Circle().fill(Color.black.opacity(0.35)))
+                            .allowsHitTesting(false)
+                    }
                 } else {
-                    VStack(spacing: 12) {
+                    VStack(spacing: 14) {
                         Image(systemName: "film")
                             .font(.system(size: 44))
                             .foregroundColor(Theme.textSecondary)
-                        Text("Importe un clip pour commencer")
-                            .foregroundColor(Theme.textSecondary)
+                        Button {
+                            vm.showImporter = true
+                        } label: {
+                            Label("Importer une vidéo", systemImage: "square.and.arrow.down")
+                                .font(.headline)
+                                .padding(.horizontal, 22)
+                                .padding(.vertical, 12)
+                                .background(Capsule().fill(Theme.accent))
+                                .foregroundColor(.white)
+                        }
                         #if DEBUG
                         Button("Charger un clip de test") { vm.loadDemoClip() }
-                            .buttonStyle(.bordered)
+                            .font(.footnote)
+                            .foregroundColor(Theme.textSecondary)
                         #endif
                     }
                 }
@@ -111,149 +125,191 @@ struct EditorView: View {
         }
     }
 
-    private var controls: some View {
-        HStack(spacing: 16) {
+    private var transport: some View {
+        HStack(spacing: 14) {
             Button {
                 vm.togglePlayback()
             } label: {
-                Image(systemName: vm.isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                    .font(.system(size: 36))
-                    .foregroundColor(Theme.accent)
+                Image(systemName: vm.isPlaying ? "pause.fill" : "play.fill")
+                    .font(.system(size: 20))
+                    .frame(width: 36, height: 36)
+                    .background(Circle().fill(Theme.accent))
+                    .foregroundColor(.white)
             }
             .disabled(!vm.hasClip)
             .accessibilityLabel(vm.isPlaying ? "Pause" : "Lecture")
 
-            Slider(
-                value: Binding(
-                    get: { vm.playhead },
-                    // Évite de publier un changement pendant la mise à jour de la vue.
-                    set: { newValue in
-                        guard abs(newValue - vm.playhead) > 0.0001 else { return }
-                        vm.seek(to: newValue)
-                    }
-                ),
-                in: 0...max(vm.duration, 0.1),
-                onEditingChanged: { editing in vm.isScrubbing = editing }
-            )
-            .tint(Theme.accent)
-            .disabled(!vm.hasClip)
-
-            Text(preciseTimeString(vm.playhead))
-                .font(.system(.caption, design: .monospaced))
+            Text(preciseTimeString(vm.playhead) + " / " + preciseTimeString(vm.duration))
+                .font(.system(.footnote, design: .monospaced))
                 .foregroundColor(Theme.textSecondary)
-                .frame(minWidth: 56, alignment: .trailing)
+
+            Spacer()
+
+            Button { vm.undo() } label: { Image(systemName: "arrow.uturn.backward") }
+                .disabled(!vm.canUndo)
+                .accessibilityLabel("Annuler")
+            Button { vm.redo() } label: { Image(systemName: "arrow.uturn.forward") }
+                .disabled(!vm.canRedo)
+                .accessibilityLabel("Rétablir")
         }
-        .padding()
+        .font(.system(size: 18))
+        .foregroundColor(Theme.textPrimary)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
         .background(Theme.surface)
     }
 
-    // MARK: Effets
+    // MARK: Barre d'outils
 
-    private var addButtons: some View {
-        HStack(spacing: 12) {
-            addButton(title: "Zoom", icon: "plus.magnifyingglass", color: Theme.accent) {
+    private var toolbar: some View {
+        HStack(spacing: 0) {
+            toolButton("Zoom", icon: "plus.magnifyingglass", color: Theme.accent, active: vm.selectedEffect?.type == .zoom) {
+                haptic()
+                panel = nil
                 vm.addZoom()
             }
-            addButton(title: "Shake", icon: "waveform.path", color: Theme.accentBlue) {
+            toolButton("Shake", icon: "waveform.path", color: Theme.accentBlue, active: vm.selectedEffect?.type == .shake) {
+                haptic()
+                panel = nil
                 vm.addShake()
             }
+            toolButton("Vitesse", icon: "speedometer", color: .yellow, active: panel == .speed) {
+                vm.selectedEffectID = nil
+                panel = panel == .speed ? nil : .speed
+            }
+            toolButton("Stabiliser", icon: "gyroscope", color: .green, active: panel == .stabilization || vm.stabilizationEnabled) {
+                vm.selectedEffectID = nil
+                panel = panel == .stabilization ? nil : .stabilization
+            }
         }
+        .padding(.top, 8)
+        .padding(.bottom, 6)
+        .background(Theme.surface.ignoresSafeArea(edges: .bottom))
     }
 
-    private func addButton(title: String, icon: String, color: Color, action: @escaping () -> Void) -> some View {
+    private func toolButton(_ title: String, icon: String, color: Color, active: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Label(title, systemImage: icon)
-                .font(.subheadline.weight(.semibold))
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
-                .background(color.opacity(0.25))
-                .foregroundColor(.white)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+            VStack(spacing: 4) {
+                Image(systemName: icon)
+                    .font(.system(size: 21))
+                    .foregroundColor(active ? color : Theme.textPrimary)
+                Text(title)
+                    .font(.caption2.weight(.medium))
+                    .foregroundColor(active ? color : Theme.textSecondary)
+            }
+            .frame(maxWidth: .infinity)
         }
         .disabled(!vm.hasClip)
     }
 
+    private func haptic() {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+
+    // MARK: Panneau contextuel
+
     @ViewBuilder
-    private var effectList: some View {
-        if vm.effects.isEmpty {
-            Text("Place la tête de lecture, puis ajoute un Zoom ou un Shake.")
+    private var contextPanel: some View {
+        if let effect = vm.selectedEffect {
+            panelContainer(title: effect.title, icon: effect.systemImage) { effectPanel(effect) }
+        } else if panel == .speed {
+            panelContainer(title: "Vitesse", icon: "speedometer") { speedPanel }
+        } else if panel == .stabilization {
+            panelContainer(title: "Stabilisation", icon: "gyroscope") { stabilizationPanel }
+        } else {
+            hint
+        }
+    }
+
+    private var hint: some View {
+        VStack(spacing: 6) {
+            Text(vm.hasClip ? "Place la tête de lecture sur l'impact, puis touche un outil." : "Importe une vidéo pour commencer.")
                 .font(.footnote)
                 .foregroundColor(Theme.textSecondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        } else {
-            VStack(spacing: 8) {
-                ForEach(vm.effects) { effect in
-                    HStack {
-                        Button {
-                            vm.selectEffect(id: effect.id)
-                        } label: {
-                            HStack {
-                                Image(systemName: effect.systemImage)
-                                    .foregroundColor(effect.type == .zoom ? Theme.accent : Theme.accentBlue)
-                                Text(effect.title)
-                                    .foregroundColor(Theme.textPrimary)
-                                Spacer()
-                                Text(preciseTimeString(effect.start) + " · " + String(format: "%.1f s", effect.duration))
-                                    .font(.caption)
-                                    .foregroundColor(Theme.textSecondary)
-                            }
-                        }
-                        Button(role: .destructive) {
-                            vm.removeEffect(id: effect.id)
-                        } label: {
-                            Image(systemName: "trash")
-                        }
-                        .accessibilityLabel("Supprimer l'effet")
-                    }
-                    .padding(12)
-                    .background(
-                        RoundedRectangle(cornerRadius: 10)
-                            .fill(effect.id == vm.selectedEffectID ? Theme.accent.opacity(0.25) : Theme.surface)
-                    )
+                .multilineTextAlignment(.center)
+            if vm.hasClip {
+                Text("Glisse un effet sur la timeline pour le déplacer.")
+                    .font(.caption)
+                    .foregroundColor(Theme.textSecondary.opacity(0.7))
+            }
+        }
+        .padding(.top, 18)
+        .padding(.horizontal, 24)
+    }
+
+    private func panelContainer<Content: View>(title: String, icon: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(spacing: 0) {
+            HStack {
+                Label(title, systemImage: icon)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(Theme.textPrimary)
+                Spacer()
+                Button {
+                    panel = nil
+                    vm.selectedEffectID = nil
+                } label: {
+                    Image(systemName: "chevron.down.circle.fill")
+                        .font(.system(size: 22))
+                        .foregroundColor(Theme.textSecondary)
+                }
+                .accessibilityLabel("Fermer")
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            ScrollView {
+                content()
+                    .padding(.horizontal, 14)
+                    .padding(.bottom, 12)
+            }
+        }
+        .background(Theme.surface.opacity(0.6))
+    }
+
+    // MARK: Réglages d'un effet
+
+    private func effectPanel(_ effect: EffectModel) -> some View {
+        let id = effect.id
+        return VStack(spacing: 12) {
+            sliderRow(
+                label: "Durée",
+                value: binding(id, get: { $0.duration }, set: { $0.duration = $1 }),
+                range: 0.1...3,
+                display: String(format: "%.1f s", effect.duration)
+            )
+            if effect.type == .zoom {
+                sliderRow(
+                    label: "Zoom",
+                    value: binding(id, get: { $0.intensity }, set: { $0.intensity = $1 }),
+                    range: 1.05...2.0,
+                    display: String(format: "x%.2f", effect.intensity)
+                )
+            } else {
+                sliderRow(
+                    label: "Force",
+                    value: binding(id, get: { $0.intensity }, set: { $0.intensity = $1 }),
+                    range: 0.005...0.06,
+                    display: String(format: "%.1f %%", effect.intensity * 100)
+                )
+            }
+            HStack(spacing: 10) {
+                actionButton("Dupliquer", icon: "plus.square.on.square", tint: Theme.accent) {
+                    vm.duplicateEffect(id: id)
+                }
+                actionButton("Supprimer", icon: "trash", tint: .red) {
+                    vm.removeEffect(id: id)
                 }
             }
         }
     }
 
-    @ViewBuilder
-    private var inspector: some View {
-        if let effect = vm.selectedEffect {
-            let id = effect.id
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Réglages · " + effect.title)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundColor(Theme.textPrimary)
-
-                sliderRow(
-                    label: "Début",
-                    value: binding(id, get: { $0.start }, set: { $0.start = $1 }),
-                    range: 0...max(vm.duration - 0.1, 0.2),
-                    display: preciseTimeString(effect.start)
-                )
-                sliderRow(
-                    label: "Durée",
-                    value: binding(id, get: { $0.duration }, set: { $0.duration = $1 }),
-                    range: 0.1...3,
-                    display: String(format: "%.1f s", effect.duration)
-                )
-                if effect.type == .zoom {
-                    sliderRow(
-                        label: "Zoom",
-                        value: binding(id, get: { $0.intensity }, set: { $0.intensity = $1 }),
-                        range: 1.05...2.0,
-                        display: String(format: "x%.2f", effect.intensity)
-                    )
-                } else {
-                    sliderRow(
-                        label: "Force",
-                        value: binding(id, get: { $0.intensity }, set: { $0.intensity = $1 }),
-                        range: 0.005...0.06,
-                        display: String(format: "%.1f %%", effect.intensity * 100)
-                    )
-                }
-            }
-            .padding(12)
-            .background(RoundedRectangle(cornerRadius: 12).fill(Theme.surface))
+    private func actionButton(_ title: String, icon: String, tint: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: icon)
+                .font(.footnote.weight(.semibold))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
+                .background(RoundedRectangle(cornerRadius: 10).fill(tint.opacity(0.22)))
+                .foregroundColor(.white)
         }
     }
 
@@ -284,74 +340,46 @@ struct EditorView: View {
         }
     }
 
-    // MARK: Vitesse et stabilisation
+    // MARK: Vitesse
 
-    private var speedSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Label("Vitesse", systemImage: "speedometer")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundColor(Theme.textPrimary)
-                Spacer()
-                Text(String(format: "x%.2f", vm.speed))
-                    .font(.system(.subheadline, design: .monospaced))
-                    .foregroundColor(Theme.accent)
-            }
-            Slider(
-                value: Binding(get: { vm.speed }, set: { vm.setSpeed($0) }),
-                in: VideoPipeline.minSpeed...VideoPipeline.maxSpeed,
-                step: 0.05
-            )
-            .tint(Theme.accent)
-            .disabled(!vm.hasClip)
-
-            HStack(spacing: 8) {
-                ForEach([0.5, 1.0, 2.0], id: \.self) { preset in
-                    Button(String(format: "x%.1f", preset)) { vm.setSpeed(preset) }
-                        .font(.caption.weight(.semibold))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(Capsule().fill(Theme.accent.opacity(0.25)))
-                        .foregroundColor(.white)
-                        .disabled(!vm.hasClip)
-                }
-                Spacer()
-            }
-        }
-        .padding(12)
-        .background(RoundedRectangle(cornerRadius: 12).fill(Theme.surface))
-    }
-
-    private var rampSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Label("Rampes de vitesse", systemImage: "chart.line.uptrend.xyaxis")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundColor(Theme.textPrimary)
-                Spacer()
-                if !vm.speedPoints.isEmpty {
-                    Button("Tout effacer") { vm.clearSpeedPoints() }
-                        .font(.caption)
-                        .foregroundColor(Theme.textSecondary)
-                }
-            }
-
+    private var speedPanel: some View {
+        VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
                 rampButton("Slow-mo punch", icon: "tortoise.fill") { vm.addSlowMoPunch() }
                 rampButton("Burst x2.5", icon: "hare.fill") { vm.addSpeedBurst() }
             }
-            rampButton("Point de vitesse ici", icon: "plus.circle") {
-                vm.addSpeedPoint(speed: vm.speed)
-            }
 
             if vm.speedPoints.isEmpty {
-                Text("Place la tête de lecture sur l'impact, puis choisis une rampe. Les points jaunes de la timeline sont les points de vitesse.")
+                Text("Place la tête de lecture sur l'impact puis choisis une rampe : la vitesse change en douceur autour de ce moment.")
                     .font(.caption)
                     .foregroundColor(Theme.textSecondary)
+
+                sliderRow(
+                    label: "Globale",
+                    value: Binding(get: { vm.speed }, set: { vm.setSpeed($0) }),
+                    range: VideoPipeline.minSpeed...VideoPipeline.maxSpeed,
+                    display: String(format: "x%.2f", vm.speed)
+                )
+                HStack(spacing: 8) {
+                    ForEach([0.5, 1.0, 2.0], id: \.self) { preset in
+                        Button(String(format: "x%.1f", preset)) { vm.setSpeed(preset) }
+                            .font(.caption.weight(.semibold))
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 7)
+                            .background(Capsule().fill(Theme.accent.opacity(0.25)))
+                            .foregroundColor(.white)
+                    }
+                }
             } else {
-                Text("Une rampe est active : elle remplace le réglage de vitesse global. Entre deux points, la vitesse varie en douceur.")
-                    .font(.caption)
-                    .foregroundColor(Theme.textSecondary)
+                HStack {
+                    Text("Rampe active : elle remplace la vitesse globale.")
+                        .font(.caption)
+                        .foregroundColor(Theme.textSecondary)
+                    Spacer()
+                    Button("Tout effacer") { vm.clearSpeedPoints() }
+                        .font(.caption.weight(.semibold))
+                        .foregroundColor(.yellow)
+                }
                 ForEach(vm.speedPoints) { point in
                     HStack {
                         Text(preciseTimeString(point.time))
@@ -370,71 +398,57 @@ struct EditorView: View {
                             .font(.system(.caption, design: .monospaced))
                             .foregroundColor(Theme.textSecondary)
                             .frame(width: 50, alignment: .trailing)
-                        Button(role: .destructive) {
+                        Button {
                             vm.removeSpeedPoint(id: point.id)
                         } label: {
-                            Image(systemName: "trash")
+                            Image(systemName: "xmark.circle.fill").foregroundColor(Theme.textSecondary)
                         }
                         .accessibilityLabel("Supprimer le point de vitesse")
                     }
                 }
+                rampButton("Ajouter un point ici", icon: "plus.circle") {
+                    vm.addSpeedPoint(speed: 1)
+                }
             }
         }
-        .padding(12)
-        .background(RoundedRectangle(cornerRadius: 12).fill(Theme.surface))
     }
 
     private func rampButton(_ title: String, icon: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Label(title, systemImage: icon)
-                .font(.caption.weight(.semibold))
+                .font(.footnote.weight(.semibold))
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 10)
                 .background(RoundedRectangle(cornerRadius: 10).fill(Color.yellow.opacity(0.2)))
                 .foregroundColor(.white)
         }
-        .disabled(!vm.hasClip)
     }
 
-    private var stabilizationSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
+    // MARK: Stabilisation
+
+    private var stabilizationPanel: some View {
+        VStack(alignment: .leading, spacing: 10) {
             Toggle(isOn: Binding(
                 get: { vm.stabilizationEnabled },
                 set: { vm.setStabilization($0) }
             )) {
-                Label("Stabilisation", systemImage: "gyroscope")
-                    .font(.subheadline.weight(.semibold))
+                Text("Stabiliser la vidéo")
                     .foregroundColor(Theme.textPrimary)
             }
             .tint(Theme.accent)
-            .disabled(!vm.hasClip || vm.isAnalyzing)
+            .disabled(vm.isAnalyzing)
 
-            Text("Retire les tremblements en gardant les mouvements voulus. L'image est légèrement recadrée.")
+            Text("Retire les tremblements en gardant les mouvements voulus. L'image est légèrement recadrée. L'analyse prend quelques secondes, une seule fois.")
                 .font(.caption)
                 .foregroundColor(Theme.textSecondary)
+            #if DEBUG
+            if !vm.debugInfo.isEmpty {
+                Text(vm.debugInfo)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundColor(.yellow)
+            }
+            #endif
         }
-        .padding(12)
-        .background(RoundedRectangle(cornerRadius: 12).fill(Theme.surface))
-    }
-
-    private var infoBar: some View {
-        HStack {
-            Label(timeString(vm.duration), systemImage: "clock")
-            Spacer()
-            Label(sizeText, systemImage: "rectangle")
-        }
-        .font(.caption)
-        .foregroundColor(Theme.textSecondary)
-        #if DEBUG
-        .overlay(alignment: .bottom) {
-            Text(vm.debugInfo).font(.system(size: 9, design: .monospaced)).foregroundColor(.yellow).offset(y: 14)
-        }
-        #endif
-    }
-
-    private var sizeText: String {
-        guard vm.hasClip, vm.renderSize.width > 0 else { return "—" }
-        return "\(Int(vm.renderSize.width)) x \(Int(vm.renderSize.height))"
     }
 
     // MARK: Chargement
@@ -459,41 +473,131 @@ struct EditorView: View {
     }
 }
 
-// MARK: - Timeline des effets
+// MARK: - Timeline : pistes Zoom / Shake / Vitesse, tête de lecture glissable
 
-struct EffectTimeline: View {
-    let effects: [EffectModel]
-    let duration: Double
-    let playhead: Double
-    let selected: UUID?
-    var speedMarks: [Double] = []
+struct EditorTimeline: View {
+    @ObservedObject var vm: EditorViewModel
+    var onSelectEffect: (UUID) -> Void
+
+    private let laneHeight: CGFloat = 26
+    private let laneSpacing: CGFloat = 5
 
     var body: some View {
         GeometryReader { geo in
-            let total = max(duration, 0.01)
             let width = geo.size.width
-            ZStack(alignment: .leading) {
-                RoundedRectangle(cornerRadius: 8).fill(Theme.surface)
-                ForEach(effects) { effect in
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(effect.type == .zoom ? Theme.accent : Theme.accentBlue)
-                        .opacity(effect.id == selected ? 1 : 0.6)
-                        .frame(width: max(CGFloat(effect.duration / total) * width, 6), height: 22)
-                        .offset(x: CGFloat(effect.start / total) * width)
+            let total = max(vm.duration, 0.01)
+            ZStack(alignment: .topLeading) {
+                RoundedRectangle(cornerRadius: 10).fill(Theme.surface)
+
+                VStack(spacing: laneSpacing) {
+                    effectLane(.zoom, color: Theme.accent, icon: "plus.magnifyingglass", width: width, total: total)
+                    effectLane(.shake, color: Theme.accentBlue, icon: "waveform.path", width: width, total: total)
+                    speedLane(width: width, total: total)
                 }
-                ForEach(Array(speedMarks.enumerated()), id: \.offset) { _, mark in
-                    Rectangle()
-                        .fill(Color.yellow)
-                        .frame(width: 2, height: 36)
-                        .offset(x: min(CGFloat(mark / total) * width, width - 2))
-                }
+                .padding(.vertical, 8)
+
                 Rectangle()
                     .fill(Color.white)
-                    .frame(width: 2, height: 36)
-                    .offset(x: min(CGFloat(playhead / total) * width, width - 2))
+                    .frame(width: 2, height: geo.size.height)
+                    .offset(x: min(max(CGFloat(vm.playhead / total) * width - 1, 0), width - 2))
+                    .allowsHitTesting(false)
+            }
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        guard vm.hasClip else { return }
+                        vm.isScrubbing = true
+                        let fraction = min(max(Double(value.location.x / width), 0), 1)
+                        vm.seek(to: fraction * total)
+                    }
+                    .onEnded { _ in vm.isScrubbing = false }
+            )
+        }
+        .frame(height: laneHeight * 3 + laneSpacing * 2 + 16)
+    }
+
+    private func effectLane(_ type: EffectModel.EffectType, color: Color, icon: String, width: CGFloat, total: Double) -> some View {
+        ZStack(alignment: .leading) {
+            RoundedRectangle(cornerRadius: 5).fill(Color.white.opacity(0.04))
+            Image(systemName: icon)
+                .font(.system(size: 10))
+                .foregroundColor(color.opacity(0.5))
+                .padding(.leading, 6)
+            ForEach(vm.effects.filter { $0.type == type }) { effect in
+                EffectBlock(
+                    effect: effect,
+                    total: total,
+                    width: width,
+                    color: color,
+                    selected: effect.id == vm.selectedEffectID,
+                    onSelect: { onSelectEffect(effect.id) },
+                    onMove: { newStart in vm.updateEffect(id: effect.id) { $0.start = newStart } }
+                )
             }
         }
-        .frame(height: 36)
+        .frame(height: laneHeight)
+        .clipped()
+    }
+
+    private func speedLane(width: CGFloat, total: Double) -> some View {
+        ZStack(alignment: .leading) {
+            RoundedRectangle(cornerRadius: 5).fill(Color.white.opacity(0.04))
+            Image(systemName: "speedometer")
+                .font(.system(size: 10))
+                .foregroundColor(Color.yellow.opacity(0.5))
+                .padding(.leading, 6)
+            if let map = vm.timeMap {
+                ForEach(Array(map.slices.enumerated()), id: \.offset) { _, slice in
+                    Rectangle()
+                        .fill(slice.speed < 0.99 ? Theme.accentBlue : (slice.speed > 1.01 ? Color.orange : Color.clear))
+                        .opacity(0.55)
+                        .frame(width: max(CGFloat((slice.outputEnd - slice.outputStart) / total) * width, 1), height: laneHeight - 8)
+                        .offset(x: CGFloat(slice.outputStart / total) * width)
+                }
+            }
+            ForEach(Array(vm.speedMarks.enumerated()), id: \.offset) { _, mark in
+                Image(systemName: "diamond.fill")
+                    .font(.system(size: 9))
+                    .foregroundColor(.yellow)
+                    .offset(x: CGFloat(mark / total) * width - 4.5)
+            }
+        }
+        .frame(height: laneHeight)
+        .clipped()
+    }
+}
+
+/// Bloc d'effet : on le touche pour le régler, on le glisse pour le déplacer.
+struct EffectBlock: View {
+    let effect: EffectModel
+    let total: Double
+    let width: CGFloat
+    let color: Color
+    let selected: Bool
+    let onSelect: () -> Void
+    let onMove: (Double) -> Void
+
+    @State private var dragX: CGFloat = 0
+
+    var body: some View {
+        let blockWidth = max(CGFloat(effect.duration / total) * width, 16)
+        RoundedRectangle(cornerRadius: 6)
+            .fill(color.opacity(selected ? 1 : 0.7))
+            .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.white, lineWidth: selected ? 2 : 0))
+            .frame(width: blockWidth, height: 22)
+            .offset(x: CGFloat(effect.start / total) * width + dragX)
+            .gesture(
+                DragGesture(minimumDistance: 4)
+                    .onChanged { dragX = $0.translation.width }
+                    .onEnded { value in
+                        let newStart = effect.start + Double(value.translation.width / width) * total
+                        dragX = 0
+                        onMove(min(max(newStart, 0), max(total - effect.duration, 0)))
+                        onSelect()
+                    }
+            )
+            .onTapGesture(perform: onSelect)
     }
 }
 
