@@ -14,6 +14,9 @@ struct RenderPlan {
     var stabilization: StabilizationData?
     /// Réduction de la taille de sortie (1 = taille d'origine). Utilisé par les presets d'export.
     var outputScale: Double = 1
+    /// Découpe en secondes du fichier source (trimOut nil = jusqu'à la fin).
+    var trimIn: Double = 0
+    var trimOut: Double?
 
     /// Faux si le plan ne modifie pas les images (aucun effet actif, pas de stabilisation).
     var needsRendering: Bool {
@@ -96,9 +99,12 @@ enum VideoPipeline {
         let timeMap = TimeMap.make(
             sourceDuration: duration.seconds,
             base: plan.speed,
-            points: plan.speedPoints
+            points: plan.speedPoints,
+            trimIn: plan.trimIn,
+            trimOut: plan.trimOut
         )
-        let isPlain = plan.speedPoints.isEmpty && abs(plan.speed - 1) < 0.001
+        let isTrimmed = plan.trimIn > 0.001 || (plan.trimOut.map { $0 < duration.seconds - 0.001 } ?? false)
+        let isPlain = plan.speedPoints.isEmpty && abs(plan.speed - 1) < 0.001 && !isTrimmed
 
         // Vitesse normale : on traite le fichier tel quel. Sinon, on assemble des tronçons.
         let base: AVAsset

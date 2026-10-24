@@ -49,21 +49,28 @@ struct TimeMap {
 
     // MARK: Construction
 
-    static func make(sourceDuration: Double, base: Double, points: [SpeedPointModel]) -> TimeMap {
-        let sorted = points
-            .filter { $0.time > 0 && $0.time < sourceDuration }
-            .sorted { $0.time < $1.time }
+    static func make(sourceDuration fileDuration: Double,
+                     base: Double,
+                     points: [SpeedPointModel],
+                     trimIn: Double = 0,
+                     trimOut: Double? = nil) -> TimeMap {
+        let lo = min(max(trimIn, 0), max(fileDuration - 0.1, 0))
+        let sourceDuration = min(max(trimOut ?? fileDuration, lo + 0.1), fileDuration)
+        // Toutes les valeurs servent à calculer la vitesse (même hors découpe) ; seules celles
+        // de la zone gardée créent des tronçons.
+        let all = points.sorted { $0.time < $1.time }
+        let sorted = all.filter { $0.time > lo && $0.time < sourceDuration }
 
         // Bornes des tronçons : début, chaque point, fin.
-        var bounds: [Double] = [0]
+        var bounds: [Double] = [lo]
         for point in sorted where point.time - (bounds.last ?? 0) > 0.001 { bounds.append(point.time) }
         if sourceDuration - (bounds.last ?? 0) > 0.001 { bounds.append(sourceDuration) } else { bounds[bounds.count - 1] = sourceDuration }
 
         var raw: [(start: Double, end: Double, speed: Double)] = []
         for i in 0..<(bounds.count - 1) {
             let a = bounds[i], b = bounds[i + 1]
-            let sa = speed(atSource: a, base: base, points: sorted)
-            let sb = speed(atSource: b, base: base, points: sorted)
+            let sa = speed(atSource: a, base: base, points: all)
+            let sb = speed(atSource: b, base: base, points: all)
             if abs(sa - sb) < 0.001 {
                 raw.append((a, b, sa))
             } else {
@@ -72,7 +79,7 @@ struct TimeMap {
                 for k in 0..<count {
                     let s = a + Double(k) * step
                     let e = k == count - 1 ? b : s + step
-                    raw.append((s, e, speed(atSource: (s + e) / 2, base: base, points: sorted)))
+                    raw.append((s, e, speed(atSource: (s + e) / 2, base: base, points: all)))
                 }
             }
         }
@@ -92,7 +99,7 @@ struct TimeMap {
 
     func sourceTime(atOutput time: Double) -> Double {
         guard let last = slices.last else { return time }
-        if time <= 0 { return 0 }
+        if time <= 0 { return slices.first?.sourceStart ?? 0 }
         if time >= last.outputEnd { return last.sourceEnd }
         let slice = slices[index(where: { $0.outputEnd > time }) ?? slices.count - 1]
         return slice.sourceStart + (time - slice.outputStart) * slice.speed
@@ -100,7 +107,7 @@ struct TimeMap {
 
     func outputTime(atSource time: Double) -> Double {
         guard let last = slices.last else { return time }
-        if time <= 0 { return 0 }
+        if time <= (slices.first?.sourceStart ?? 0) { return 0 }
         if time >= last.sourceEnd { return last.outputEnd }
         let slice = slices[index(where: { $0.sourceEnd > time }) ?? slices.count - 1]
         return slice.outputStart + (time - slice.sourceStart) / slice.speed

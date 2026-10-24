@@ -57,6 +57,9 @@ struct ClipModel: Codable, Identifiable, Equatable {
     /// Optionnels : les projets sauvegardés avant la Phase 5 restent lisibles.
     var stabilizationEnabled: Bool?
     var speedPoints: [SpeedPointModel]?
+    /// Découpe (secondes du fichier source). nil = début / fin du fichier.
+    var trimIn: Double?
+    var trimOut: Double?
 }
 
 struct TrackModel: Codable, Identifiable, Equatable {

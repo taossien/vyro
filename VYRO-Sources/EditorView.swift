@@ -12,7 +12,7 @@ struct EditorView: View {
     @StateObject private var vm: EditorViewModel
     @State private var panel: ToolPanel?
 
-    enum ToolPanel { case speed, stabilization }
+    enum ToolPanel { case speed, stabilization, trim }
 
     init(project: ProjectModel? = nil) {
         _vm = StateObject(wrappedValue: EditorViewModel(project: project))
@@ -22,7 +22,7 @@ struct EditorView: View {
         GeometryReader { geo in
             VStack(spacing: 0) {
                 preview
-                    .frame(height: geo.size.height * 0.40)
+                    .frame(height: geo.size.height * 0.33)
                 transport
                 EditorTimeline(vm: vm, onSelectEffect: { id in
                     panel = nil
@@ -189,11 +189,15 @@ struct EditorView: View {
                 panel = nil
                 vm.addFlash()
             }
+            toolButton("Couper", icon: "scissors", color: .orange, active: panel == .trim || vm.isTrimmed) {
+                vm.selectedEffectID = nil
+                panel = panel == .trim ? nil : .trim
+            }
             toolButton("Vitesse", icon: "speedometer", color: .yellow, active: panel == .speed) {
                 vm.selectedEffectID = nil
                 panel = panel == .speed ? nil : .speed
             }
-            toolButton("Stabiliser", icon: "gyroscope", color: .green, active: panel == .stabilization || vm.stabilizationEnabled) {
+            toolButton("Stable", icon: "gyroscope", color: .green, active: panel == .stabilization || vm.stabilizationEnabled) {
                 vm.selectedEffectID = nil
                 panel = panel == .stabilization ? nil : .stabilization
             }
@@ -230,6 +234,8 @@ struct EditorView: View {
             panelContainer(title: effect.title, icon: effect.systemImage) { effectPanel(effect) }
         } else if panel == .speed {
             panelContainer(title: "Vitesse", icon: "speedometer") { speedPanel }
+        } else if panel == .trim {
+            panelContainer(title: "Découpe", icon: "scissors") { trimPanel }
         } else if panel == .stabilization {
             panelContainer(title: "Stabilisation", icon: "gyroscope") { stabilizationPanel }
         } else {
@@ -456,6 +462,37 @@ struct EditorView: View {
         }
     }
 
+    // MARK: Découpe
+
+    private var trimPanel: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sliderRow(
+                label: "Début",
+                value: Binding(get: { vm.trimIn }, set: { vm.setTrimIn($0) }),
+                range: 0...max(vm.fileDuration, 0.5),
+                display: preciseTimeString(vm.trimIn)
+            )
+            sliderRow(
+                label: "Fin",
+                value: Binding(get: { vm.trimOut }, set: { vm.setTrimOut($0) }),
+                range: 0...max(vm.fileDuration, 0.5),
+                display: preciseTimeString(vm.trimOut)
+            )
+            HStack(spacing: 10) {
+                actionButton("Début ici", icon: "arrow.right.to.line", tint: .orange) { vm.trimStartHere() }
+                actionButton("Fin ici", icon: "arrow.left.to.line", tint: .orange) { vm.trimEndHere() }
+            }
+            if vm.isTrimmed {
+                Button("Tout restaurer") { vm.resetTrim() }
+                    .font(.footnote.weight(.semibold))
+                    .foregroundColor(.orange)
+            }
+            Text("Les effets restent à leur position dans le montage : replace-les après une découpe.")
+                .font(.caption)
+                .foregroundColor(Theme.textSecondary)
+        }
+    }
+
     // MARK: Stabilisation
 
     private var stabilizationPanel: some View {
@@ -511,8 +548,8 @@ struct EditorTimeline: View {
     @ObservedObject var vm: EditorViewModel
     var onSelectEffect: (UUID) -> Void
 
-    private let laneHeight: CGFloat = 26
-    private let laneSpacing: CGFloat = 5
+    private let laneHeight: CGFloat = 22
+    private let laneSpacing: CGFloat = 4
 
     var body: some View {
         GeometryReader { geo in
@@ -619,7 +656,7 @@ struct EffectBlock: View {
         RoundedRectangle(cornerRadius: 6)
             .fill(color.opacity(selected ? 1 : 0.7))
             .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.white, lineWidth: selected ? 2 : 0))
-            .frame(width: blockWidth, height: 22)
+            .frame(width: blockWidth, height: 18)
             .offset(x: CGFloat(effect.start / total) * width + dragX)
             .gesture(
                 DragGesture(minimumDistance: 4)

@@ -92,8 +92,39 @@ final class EditorViewModel: ObservableObject {
             effects: effects,
             speed: speed,
             speedPoints: speedPoints,
-            stabilization: stabilizationEnabled ? stabilizationData : nil
+            stabilization: stabilizationEnabled ? stabilizationData : nil,
+            trimIn: trimIn,
+            trimOut: project.tracks.first?.clips.first?.trimOut
         )
+    }
+
+    // MARK: - Découpe
+
+    /// Début de la découpe, en secondes du fichier source.
+    var trimIn: Double { project.tracks.first?.clips.first?.trimIn ?? 0 }
+    /// Fin de la découpe, en secondes du fichier source.
+    var trimOut: Double { project.tracks.first?.clips.first?.trimOut ?? sourceDuration }
+    var fileDuration: Double { sourceDuration }
+    var isTrimmed: Bool { trimIn > 0.001 || trimOut < sourceDuration - 0.001 }
+
+    func setTrimIn(_ value: Double) {
+        let v = min(max(value, 0), trimOut - 0.3)
+        mutateClip { $0.trimIn = v <= 0.001 ? nil : v }
+        scheduleRebuild()
+    }
+
+    func setTrimOut(_ value: Double) {
+        let v = min(max(value, trimIn + 0.3), sourceDuration)
+        mutateClip { $0.trimOut = v >= sourceDuration - 0.001 ? nil : v }
+        scheduleRebuild()
+    }
+
+    func trimStartHere() { setTrimIn(playheadSourceTime) }
+    func trimEndHere() { setTrimOut(playheadSourceTime) }
+
+    func resetTrim() {
+        mutateClip { $0.trimIn = nil; $0.trimOut = nil }
+        scheduleRebuild()
     }
 
     private func mutateClip(_ change: (inout ClipModel) -> Void) {
