@@ -34,6 +34,15 @@ extension EffectModel {
         )
     }
 
+    /// Flash blanc : intensité = blancheur maximale (1 = écran tout blanc), retombée rapide.
+    static func flash(start: Double, duration: Double = 0.25, strength: Double = 0.8) -> EffectModel {
+        EffectModel(
+            id: UUID(),
+            type: .flash,
+            parameters: ["start": start, "duration": duration, "intensity": strength]
+        )
+    }
+
     var start: Double {
         get { parameters["start"] ?? 0 }
         set { parameters["start"] = newValue }
@@ -45,7 +54,7 @@ extension EffectModel {
     }
 
     var intensity: Double {
-        get { parameters["intensity"] ?? (type == .zoom ? 1.4 : 0.02) }
+        get { parameters["intensity"] ?? (type == .zoom ? 1.4 : (type == .flash ? 0.8 : 0.02)) }
         set { parameters["intensity"] = newValue }
     }
 
@@ -82,6 +91,8 @@ struct FrameTransform {
     var dy: Double = 0
     /// Agrandissement supplémentaire pour que le décalage ne révèle jamais de bords noirs.
     var margin: Double = 0
+    /// Blancheur ajoutée (0 = rien, 1 = écran blanc).
+    var flash: Double = 0
 }
 
 enum EffectEngine {
@@ -102,6 +113,8 @@ enum EffectEngine {
                 result.dx += effect.intensity * decay * noise(seed: seed, x: x, channel: 0)
                 result.dy += effect.intensity * decay * noise(seed: seed, x: x, channel: 1)
                 result.margin += 2 * effect.intensity * decay
+            case .flash:
+                result.flash = min(1, result.flash + effect.intensity * (1 - u) * (1 - u))
             default:
                 break
             }

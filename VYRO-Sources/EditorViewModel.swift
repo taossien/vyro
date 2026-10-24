@@ -295,6 +295,10 @@ final class EditorViewModel: ObservableObject {
         addEffect(.zoom(start: playhead))
     }
 
+    func addFlash() {
+        addEffect(.flash(start: playhead))
+    }
+
     func addShake() {
         addEffect(.shake(start: playhead))
     }

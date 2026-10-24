@@ -173,6 +173,11 @@ struct EditorView: View {
                 panel = nil
                 vm.addShake()
             }
+            toolButton("Flash", icon: "bolt.fill", color: .white, active: vm.selectedEffect?.type == .flash) {
+                haptic()
+                panel = nil
+                vm.addFlash()
+            }
             toolButton("Vitesse", icon: "speedometer", color: .yellow, active: panel == .speed) {
                 vm.selectedEffectID = nil
                 panel = panel == .speed ? nil : .speed
@@ -282,6 +287,13 @@ struct EditorView: View {
                     value: binding(id, get: { $0.intensity }, set: { $0.intensity = $1 }),
                     range: 1.05...2.0,
                     display: String(format: "x%.2f", effect.intensity)
+                )
+            } else if effect.type == .flash {
+                sliderRow(
+                    label: "Blanc",
+                    value: binding(id, get: { $0.intensity }, set: { $0.intensity = $1 }),
+                    range: 0.2...1.0,
+                    display: String(format: "%.0f %%", effect.intensity * 100)
                 )
             } else {
                 sliderRow(
@@ -492,6 +504,7 @@ struct EditorTimeline: View {
                 VStack(spacing: laneSpacing) {
                     effectLane(.zoom, color: Theme.accent, icon: "plus.magnifyingglass", width: width, total: total)
                     effectLane(.shake, color: Theme.accentBlue, icon: "waveform.path", width: width, total: total)
+                    effectLane(.flash, color: Color(white: 0.85), icon: "bolt.fill", width: width, total: total)
                     speedLane(width: width, total: total)
                 }
                 .padding(.vertical, 8)
@@ -514,7 +527,7 @@ struct EditorTimeline: View {
                     .onEnded { _ in vm.isScrubbing = false }
             )
         }
-        .frame(height: laneHeight * 3 + laneSpacing * 2 + 16)
+        .frame(height: laneHeight * 4 + laneSpacing * 3 + 16)
     }
 
     private func effectLane(_ type: EffectModel.EffectType, color: Color, icon: String, width: CGFloat, total: Double) -> some View {

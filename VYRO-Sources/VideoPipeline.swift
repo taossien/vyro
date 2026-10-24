@@ -143,6 +143,7 @@ enum VideoPipeline {
         var scale: Double
         var dx: Double
         var dy: Double
+        var flash: Double
     }
 
     private static func makeVideoComposition(track: AVAssetTrack,
@@ -170,7 +171,7 @@ enum VideoPipeline {
                 dx += c.dx
                 dy -= c.dy      // Vision : axe Y vers le haut ; calque : vers le bas
             }
-            let key = FrameKey(scale: scale, dx: dx, dy: dy)
+            let key = FrameKey(scale: scale, dx: dx, dy: dy, flash: (fx.flash * 50).rounded() / 50)
             if segments.last?.key != key { segments.append((i, key)) }
         }
 
@@ -187,7 +188,9 @@ enum VideoPipeline {
                 layerTransform(segment.key, preferred: preferred, size: renderSize),
                 at: .zero
             )
+            if segment.key.flash > 0 { layer.setOpacity(Float(1 - segment.key.flash), at: .zero) }
             let instruction = AVMutableVideoCompositionInstruction()
+            instruction.backgroundColor = CGColor(gray: 1, alpha: 1)   // le flash révèle ce fond blanc
             instruction.timeRange = CMTimeRange(start: start, end: end)
             instruction.layerInstructions = [layer]
             instructions.append(instruction)
