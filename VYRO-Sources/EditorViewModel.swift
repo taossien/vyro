@@ -299,6 +299,10 @@ final class EditorViewModel: ObservableObject {
         addEffect(.flash(start: playhead))
     }
 
+    func addGlitch() {
+        addEffect(.glitch(start: playhead))
+    }
+
     func addShake() {
         addEffect(.shake(start: playhead))
     }
@@ -471,7 +475,7 @@ final class EditorViewModel: ObservableObject {
 
     // MARK: - Export
 
-    func export() {
+    func export(preset: ExportPreset = .original) {
         guard hasClip, let url = clipURL, !isExporting else { return }
         player?.pause()
         isPlaying = false
@@ -480,7 +484,7 @@ final class EditorViewModel: ObservableObject {
         let plan = self.plan
         Task {
             do {
-                let output = try await VideoPipeline.export(url: url, plan: plan) { [weak self] value in
+                let output = try await VideoPipeline.export(url: url, plan: plan, preset: preset) { [weak self] value in
                     Task { @MainActor in self?.exportProgress = value }
                 }
                 exportedURL = output

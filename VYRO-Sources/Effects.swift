@@ -34,6 +34,26 @@ extension EffectModel {
         )
     }
 
+    /// Glitch : saccades horizontales brusques, intensité = amplitude (fraction de la largeur).
+    static func glitch(start: Double, duration: Double = 0.4, amount: Double = 0.04) -> EffectModel {
+        EffectModel(
+            id: UUID(),
+            type: .glitch,
+            parameters: [
+                "start": start,
+                "duration": duration,
+                "intensity": amount,
+                "seed": Double(Int.random(in: 1...9999))
+            ]
+        )
+    }
+
+    /// Courbe du zoom : 0 = punch, 1 = doux, 2 = claque (montée instantanée).
+    var curve: Int {
+        get { Int(parameters["curve"] ?? 0) }
+        set { parameters["curve"] = Double(newValue) }
+    }
+
     /// Flash blanc : intensité = blancheur maximale (1 = écran tout blanc), retombée rapide.
     static func flash(start: Double, duration: Double = 0.25, strength: Double = 0.8) -> EffectModel {
         EffectModel(
@@ -54,7 +74,7 @@ extension EffectModel {
     }
 
     var intensity: Double {
-        get { parameters["intensity"] ?? (type == .zoom ? 1.4 : (type == .flash ? 0.8 : 0.02)) }
+        get { parameters["intensity"] ?? (type == .zoom ? 1.4 : (type == .flash ? 0.8 : (type == .glitch ? 0.04 : 0.02))) }
         set { parameters["intensity"] = newValue }
     }
 
@@ -97,6 +117,7 @@ struct FrameTransform {
 
 enum EffectEngine {
     static let shakeFrequency = 18.0
+    static let glitchRate = 15.0
 
     static func transform(at time: Double, effects: [EffectModel]) -> FrameTransform {
         var result = FrameTransform()
@@ -105,7 +126,7 @@ enum EffectEngine {
             let u = (time - effect.start) / effect.duration
             switch effect.type {
             case .zoom:
-                result.scale += (effect.intensity - 1) * zoomEnvelope(u)
+                result.scale += (effect.intensity - 1) * zoomEnvelope(u, curve: effect.curve)
             case .shake:
                 let decay = (1 - u) * (1 - u)
                 let seed = UInt32(truncatingIfNeeded: Int(effect.parameters["seed"] ?? 1))
@@ -113,6 +134,17 @@ enum EffectEngine {
                 result.dx += effect.intensity * decay * noise(seed: seed, x: x, channel: 0)
                 result.dy += effect.intensity * decay * noise(seed: seed, x: x, channel: 1)
                 result.margin += 2 * effect.intensity * decay
+            case .glitch:
+                let seed = UInt32(truncatingIfNeeded: Int(effect.parameters["seed"] ?? 1))
+                let step = Int(floor(time * glitchRate))
+                // Une saccade sur deux environ : le reste du temps l'image est nette.
+                let active = hash(seed: seed, index: step, channel: 2) > -0.1
+                if active {
+                    let decay = 1 - 0.6 * u
+                    result.dx += effect.intensity * decay * hash(seed: seed, index: step, channel: 0)
+                    result.dy += effect.intensity * 0.25 * decay * hash(seed: seed, index: step, channel: 1)
+                    result.margin += 2 * effect.intensity * decay
+                }
             case .flash:
                 result.flash = min(1, result.flash + effect.intensity * (1 - u) * (1 - u))
             default:
@@ -123,8 +155,12 @@ enum EffectEngine {
     }
 
     /// Montée rapide (25 % du temps) puis retour doux : l'effet "punch" des gaming edits.
-    static func zoomEnvelope(_ u: Double) -> Double {
-        let attack = 0.25
+    static func zoomEnvelope(_ u: Double, curve: Int = 0) -> Double {
+        if curve == 1 {                                   // doux : montée et descente lissées
+            let k = u < 0.5 ? u * 2 : (1 - u) * 2
+            return k * k * (3 - 2 * k)
+        }
+        let attack = curve == 2 ? 0.06 : 0.25
         if u < attack {
             let k = u / attack
             return 1 - (1 - k) * (1 - k)
@@ -143,7 +179,7 @@ enum EffectEngine {
         return a + (b - a) * s
     }
 
-    private static func hash(seed: UInt32, index: Int, channel: UInt32) -> Double {
+    static func hash(seed: UInt32, index: Int, channel: UInt32) -> Double {
         var h = seed &* 374_761_393
         h = h &+ UInt32(truncatingIfNeeded: index) &* 668_265_263
         h = h &+ channel &* 2_246_822_519

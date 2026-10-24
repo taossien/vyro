@@ -40,8 +40,14 @@ struct EditorView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
-                Button {
-                    vm.export()
+                Menu {
+                    ForEach(ExportPreset.allCases) { preset in
+                        Button {
+                            vm.export(preset: preset)
+                        } label: {
+                            Label(preset.title + " : " + preset.detail, systemImage: "square.and.arrow.up")
+                        }
+                    }
                 } label: {
                     Image(systemName: "square.and.arrow.up")
                 }
@@ -173,6 +179,11 @@ struct EditorView: View {
                 panel = nil
                 vm.addShake()
             }
+            toolButton("Glitch", icon: "square.stack.3d.down.right", color: .pink, active: vm.selectedEffect?.type == .glitch) {
+                haptic()
+                panel = nil
+                vm.addGlitch()
+            }
             toolButton("Flash", icon: "bolt.fill", color: .white, active: vm.selectedEffect?.type == .flash) {
                 haptic()
                 panel = nil
@@ -288,6 +299,15 @@ struct EditorView: View {
                     range: 1.05...2.0,
                     display: String(format: "x%.2f", effect.intensity)
                 )
+                Picker("Courbe", selection: Binding(
+                    get: { effect.curve },
+                    set: { value in vm.updateEffect(id: id) { $0.curve = value } }
+                )) {
+                    Text("Punch").tag(0)
+                    Text("Doux").tag(1)
+                    Text("Claque").tag(2)
+                }
+                .pickerStyle(.segmented)
             } else if effect.type == .flash {
                 sliderRow(
                     label: "Blanc",
@@ -504,6 +524,7 @@ struct EditorTimeline: View {
                 VStack(spacing: laneSpacing) {
                     effectLane(.zoom, color: Theme.accent, icon: "plus.magnifyingglass", width: width, total: total)
                     effectLane(.shake, color: Theme.accentBlue, icon: "waveform.path", width: width, total: total)
+                    effectLane(.glitch, color: .pink, icon: "square.stack.3d.down.right", width: width, total: total)
                     effectLane(.flash, color: Color(white: 0.85), icon: "bolt.fill", width: width, total: total)
                     speedLane(width: width, total: total)
                 }
@@ -527,7 +548,7 @@ struct EditorTimeline: View {
                     .onEnded { _ in vm.isScrubbing = false }
             )
         }
-        .frame(height: laneHeight * 4 + laneSpacing * 3 + 16)
+        .frame(height: laneHeight * 5 + laneSpacing * 4 + 16)
     }
 
     private func effectLane(_ type: EffectModel.EffectType, color: Color, icon: String, width: CGFloat, total: Double) -> some View {

@@ -12,10 +12,12 @@ struct RenderPlan {
     var speed: Double
     var speedPoints: [SpeedPointModel] = []
     var stabilization: StabilizationData?
+    /// Réduction de la taille de sortie (1 = taille d'origine). Utilisé par les presets d'export.
+    var outputScale: Double = 1
 
     /// Faux si le plan ne modifie pas les images (aucun effet actif, pas de stabilisation).
     var needsRendering: Bool {
-        stabilization != nil || effects.contains { $0.enabled }
+        stabilization != nil || outputScale < 0.999 || effects.contains { $0.enabled }
     }
 }
 
@@ -26,6 +28,33 @@ struct BuiltPipeline {
     let duration: Double
     let renderSize: CGSize
     let timeMap: TimeMap
+}
+
+/// Presets d'export : la taille maximale du grand côté, jamais d'agrandissement.
+enum ExportPreset: String, CaseIterable, Identifiable {
+    case original, hd1080, hd720
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .original: return "Original"
+        case .hd1080: return "1080p"
+        case .hd720: return "720p"
+        }
+    }
+    var detail: String {
+        switch self {
+        case .original: return "Qualité maximale, taille du fichier source"
+        case .hd1080: return "Idéal TikTok, Reels, Shorts"
+        case .hd720: return "Fichier léger, envoi rapide"
+        }
+    }
+    var longSide: Double? {
+        switch self {
+        case .original: return nil
+        case .hd1080: return 1920
+        case .hd720: return 1280
+        }
+    }
 }
 
 enum PipelineError: LocalizedError {
@@ -116,11 +145,19 @@ enum VideoPipeline {
         }
 
         var videoComposition: AVMutableVideoComposition?
+        var finalSize = renderSize
+        if plan.outputScale < 0.999 {
+            finalSize = CGSize(
+                width: (renderSize.width * plan.outputScale / 2).rounded() * 2,
+                height: (renderSize.height * plan.outputScale / 2).rounded() * 2
+            )
+        }
         if plan.needsRendering {
             videoComposition = makeVideoComposition(
                 track: activeTrack,
                 preferred: preferred,
                 renderSize: renderSize,
+                finalSize: finalSize,
                 duration: outputDuration,
                 frameRate: nominalRate,
                 plan: plan,
@@ -132,7 +169,7 @@ enum VideoPipeline {
             composition: base,
             videoComposition: videoComposition,
             duration: outputDuration.seconds,
-            renderSize: renderSize,
+            renderSize: finalSize,
             timeMap: timeMap
         )
     }
@@ -149,6 +186,7 @@ enum VideoPipeline {
     private static func makeVideoComposition(track: AVAssetTrack,
                                              preferred: CGAffineTransform,
                                              renderSize: CGSize,
+                                             finalSize: CGSize,
                                              duration: CMTime,
                                              frameRate: Float,
                                              plan: RenderPlan,
@@ -185,7 +223,8 @@ enum VideoPipeline {
 
             let layer = AVMutableVideoCompositionLayerInstruction(assetTrack: track)
             layer.setTransform(
-                layerTransform(segment.key, preferred: preferred, size: renderSize),
+                layerTransform(segment.key, preferred: preferred, size: renderSize,
+                               outputScale: finalSize.width / max(renderSize.width, 1)),
                 at: .zero
             )
             if segment.key.flash > 0 { layer.setOpacity(Float(1 - segment.key.flash), at: .zero) }
@@ -197,7 +236,7 @@ enum VideoPipeline {
         }
 
         let composition = AVMutableVideoComposition()
-        composition.renderSize = renderSize
+        composition.renderSize = finalSize
         let fps = frameRate > 1 ? min(Int(frameRate.rounded()), 60) : 30
         composition.frameDuration = CMTime(value: 1, timescale: CMTimeScale(fps))
         composition.instructions = instructions
@@ -207,7 +246,8 @@ enum VideoPipeline {
     /// Orientation d'origine, puis zoom autour du centre, puis décalage (fractions de l'image).
     private static func layerTransform(_ key: FrameKey,
                                        preferred: CGAffineTransform,
-                                       size: CGSize) -> CGAffineTransform {
+                                       size: CGSize,
+                                       outputScale: CGFloat = 1) -> CGAffineTransform {
         let w = size.width
         let h = size.height
         let s = CGFloat(key.scale)
@@ -216,15 +256,28 @@ enum VideoPipeline {
         t = t.concatenating(CGAffineTransform(scaleX: s, y: s))
         t = t.concatenating(CGAffineTransform(translationX: w / 2 + CGFloat(key.dx) * w,
                                               y: h / 2 + CGFloat(key.dy) * h))
+        if outputScale != 1 { t = t.concatenating(CGAffineTransform(scaleX: outputScale, y: outputScale)) }
         return t
     }
 
     // MARK: Export
 
+    private static func naturalLongSide(url: URL) async throws -> Double {
+        let asset = AVURLAsset(url: url)
+        guard let track = try await asset.loadTracks(withMediaType: .video).first else { return 0 }
+        let size = try await track.load(.naturalSize)
+        return Double(max(size.width, size.height))
+    }
+
     /// Exporte le montage dans un fichier .mp4 temporaire, avec le MÊME pipeline que l'aperçu.
     static func export(url: URL,
                        plan: RenderPlan,
+                       preset: ExportPreset = .original,
                        progress: @escaping (Double) -> Void) async throws -> URL {
+        var plan = plan
+        if let side = preset.longSide, let size = try? await naturalLongSide(url: url), size > side {
+            plan.outputScale = side / size
+        }
         let built = try await build(url: url, plan: plan)
 
         let output = FileManager.default.temporaryDirectory
