@@ -10,6 +10,7 @@ import AVFoundation
 struct RenderPlan {
     var effects: [EffectModel]
     var speed: Double
+    var speedPoints: [SpeedPointModel] = []
     var stabilization: StabilizationData?
 
     /// Faux si le plan ne modifie pas les images (aucun effet actif, pas de stabilisation).
@@ -24,6 +25,7 @@ struct BuiltPipeline {
     let videoComposition: AVVideoComposition?
     let duration: Double
     let renderSize: CGSize
+    let timeMap: TimeMap
 }
 
 enum PipelineError: LocalizedError {
@@ -62,14 +64,18 @@ enum VideoPipeline {
         let oriented = natural.applying(preferred)
         let renderSize = CGSize(width: abs(oriented.width).rounded(), height: abs(oriented.height).rounded())
 
-        let speed = min(max(plan.speed, minSpeed), maxSpeed)
-        let fullRange = CMTimeRange(start: .zero, duration: duration)
+        let timeMap = TimeMap.make(
+            sourceDuration: duration.seconds,
+            base: plan.speed,
+            points: plan.speedPoints
+        )
+        let isPlain = plan.speedPoints.isEmpty && abs(plan.speed - 1) < 0.001
 
-        // Vitesse normale : on traite le fichier tel quel. Sinon, on passe par une composition.
+        // Vitesse normale : on traite le fichier tel quel. Sinon, on assemble des tronçons.
         let base: AVAsset
         var activeTrack: AVAssetTrack = sourceVideo
         var outputDuration = duration
-        if abs(speed - 1) < 0.001 {
+        if isPlain {
             base = asset
         } else {
             let composition = AVMutableComposition()
@@ -77,20 +83,34 @@ enum VideoPipeline {
                 withMediaType: .video,
                 preferredTrackID: kCMPersistentTrackID_Invalid
             ) else { throw PipelineError.noVideoTrack }
-            try track.insertTimeRange(fullRange, of: sourceVideo, at: .zero)
             track.preferredTransform = preferred
             composition.naturalSize = renderSize
 
-            if let sourceAudio = try await asset.loadTracks(withMediaType: .audio).first,
-               let audio = composition.addMutableTrack(
+            let sourceAudio = try await asset.loadTracks(withMediaType: .audio).first
+            let audio = sourceAudio == nil ? nil : composition.addMutableTrack(
                 withMediaType: .audio,
                 preferredTrackID: kCMPersistentTrackID_Invalid
-               ) {
-                try? audio.insertTimeRange(fullRange, of: sourceAudio, at: .zero)
-            }
+            )
 
-            outputDuration = CMTimeMultiplyByFloat64(duration, multiplier: 1.0 / speed)
-            composition.scaleTimeRange(fullRange, toDuration: outputDuration)
+            // Chaque tronçon est inséré à la suite puis étiré à sa durée de sortie.
+            let scale: CMTimeScale = 6000
+            var cursor = CMTime.zero
+            for slice in timeMap.slices {
+                let start = CMTime(seconds: slice.sourceStart, preferredTimescale: scale)
+                var end = CMTime(seconds: slice.sourceEnd, preferredTimescale: scale)
+                if end > duration { end = duration }
+                let range = CMTimeRange(start: start, end: end)
+                guard range.duration > .zero else { continue }
+
+                try track.insertTimeRange(range, of: sourceVideo, at: cursor)
+                if let sourceAudio, let audio {
+                    try? audio.insertTimeRange(range, of: sourceAudio, at: cursor)
+                }
+                let target = CMTimeMultiplyByFloat64(range.duration, multiplier: 1.0 / slice.speed)
+                composition.scaleTimeRange(CMTimeRange(start: cursor, duration: range.duration), toDuration: target)
+                cursor = cursor + target
+            }
+            outputDuration = composition.duration
             activeTrack = track
             base = composition
         }
@@ -103,7 +123,8 @@ enum VideoPipeline {
                 renderSize: renderSize,
                 duration: outputDuration,
                 frameRate: nominalRate,
-                plan: plan
+                plan: plan,
+                timeMap: timeMap
             )
         }
 
@@ -111,7 +132,8 @@ enum VideoPipeline {
             composition: base,
             videoComposition: videoComposition,
             duration: outputDuration.seconds,
-            renderSize: renderSize
+            renderSize: renderSize,
+            timeMap: timeMap
         )
     }
 
@@ -128,10 +150,10 @@ enum VideoPipeline {
                                              renderSize: CGSize,
                                              duration: CMTime,
                                              frameRate: Float,
-                                             plan: RenderPlan) -> AVMutableVideoComposition {
+                                             plan: RenderPlan,
+                                             timeMap: TimeMap) -> AVMutableVideoComposition {
         let step = CMTimeValue(600 / effectFPS)            // 1/30 s en unités de 1/600 s
         let count = max(1, Int((duration.seconds * Double(effectFPS) - 1e-6).rounded(.up)))
-        let speed = min(max(plan.speed, minSpeed), maxSpeed)
         let stabilizationCrop = plan.stabilization?.cropScale ?? 1
 
         // Cadrage de chaque pas de 1/30 s ; les pas identiques sont fusionnés.
@@ -143,7 +165,7 @@ enum VideoPipeline {
             var dx = fx.dx
             var dy = fx.dy
             if let stabilization = plan.stabilization {
-                let c = stabilization.correction(atSourceTime: time * speed)
+                let c = stabilization.correction(atSourceTime: timeMap.sourceTime(atOutput: time))
                 scale *= stabilizationCrop
                 dx += c.dx
                 dy -= c.dy      // Vision : axe Y vers le haut ; calque : vers le bas

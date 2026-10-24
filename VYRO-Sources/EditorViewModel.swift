@@ -32,6 +32,7 @@ final class EditorViewModel: ObservableObject {
     @Published var exportedURL: URL?
     @Published var showExportDone = false
 
+    @Published private(set) var timeMap: TimeMap?
     private var clipURL: URL?
     private var stabilizationData: StabilizationData?
     private var timeObserver: Any?
@@ -67,6 +68,16 @@ final class EditorViewModel: ObservableObject {
         project.tracks.first?.clips.first?.effects ?? []
     }
 
+    var speedPoints: [SpeedPointModel] {
+        (project.tracks.first?.clips.first?.speedPoints ?? []).sorted { $0.time < $1.time }
+    }
+
+    /// Positions (temps du montage) des points de vitesse, pour la timeline.
+    var speedMarks: [Double] {
+        guard let timeMap else { return [] }
+        return speedPoints.map { timeMap.outputTime(atSource: $0.time) }
+    }
+
     var selectedEffect: EffectModel? {
         effects.first { $0.id == selectedEffectID }
     }
@@ -75,6 +86,7 @@ final class EditorViewModel: ObservableObject {
         RenderPlan(
             effects: effects,
             speed: speed,
+            speedPoints: speedPoints,
             stabilization: stabilizationEnabled ? stabilizationData : nil
         )
     }
@@ -165,6 +177,7 @@ final class EditorViewModel: ObservableObject {
 
             player.replaceCurrentItem(with: item)
             duration = built.duration
+            timeMap = built.timeMap
             renderSize = built.renderSize
             playhead = resume
             _ = await player.seek(
@@ -274,6 +287,74 @@ final class EditorViewModel: ObservableObject {
         speed = clamped
         mutateClip { $0.speed = clamped }
         scheduleRebuild()
+    }
+
+    // MARK: - Rampes de vitesse
+
+    /// Temps source correspondant à la tête de lecture.
+    private var playheadSourceTime: Double {
+        timeMap?.sourceTime(atOutput: playhead) ?? playhead * speed
+    }
+
+    private var sourceDuration: Double {
+        project.tracks.first?.clips.first?.sourceOut ?? 0
+    }
+
+    private func setSpeedPoints(_ points: [SpeedPointModel]) {
+        let cleaned = points.sorted { $0.time < $1.time }
+        mutateClip { $0.speedPoints = cleaned.isEmpty ? nil : cleaned }
+        scheduleRebuild()
+    }
+
+    /// Ajoute (ou remplace) un point de vitesse à la tête de lecture.
+    func addSpeedPoint(speed value: Double) {
+        guard hasClip else { return }
+        let time = playheadSourceTime
+        var points = speedPoints.filter { abs($0.time - time) > 0.03 }
+        points.append(SpeedPointModel(id: UUID(), time: time, speed: TimeMap.clamp(value)))
+        setSpeedPoints(points)
+    }
+
+    /// Slow-mo "punch" : normal, ralenti net sur l'impact, retour à la normale.
+    func addSlowMoPunch() {
+        addRamp([(-0.25, 1.0), (0, 0.25), (0.5, 0.25), (0.8, 1.0)])
+    }
+
+    /// Accélération courte : normal, burst rapide, retour à la normale.
+    func addSpeedBurst() {
+        addRamp([(-0.2, 1.0), (0, 2.5), (0.6, 2.5), (0.8, 1.0)])
+    }
+
+    private func addRamp(_ shape: [(offset: Double, speed: Double)]) {
+        guard hasClip else { return }
+        let center = playheadSourceTime
+        let total = sourceDuration
+        let first = center + shape[0].offset
+        let last = center + shape[shape.count - 1].offset
+        // On remplace les points existants dans la zone de la rampe.
+        var points = speedPoints.filter { $0.time < first - 0.03 || $0.time > last + 0.03 }
+        for item in shape {
+            let time = min(max(center + item.offset, 0.05), max(total - 0.05, 0.05))
+            if !points.contains(where: { abs($0.time - time) < 0.03 }) {
+                points.append(SpeedPointModel(id: UUID(), time: time, speed: item.speed))
+            }
+        }
+        setSpeedPoints(points)
+    }
+
+    func updateSpeedPoint(id: UUID, speed value: Double) {
+        var points = speedPoints
+        guard let index = points.firstIndex(where: { $0.id == id }) else { return }
+        points[index].speed = TimeMap.clamp(value)
+        setSpeedPoints(points)
+    }
+
+    func removeSpeedPoint(id: UUID) {
+        setSpeedPoints(speedPoints.filter { $0.id != id })
+    }
+
+    func clearSpeedPoints() {
+        setSpeedPoints([])
     }
 
     // MARK: - Stabilisation

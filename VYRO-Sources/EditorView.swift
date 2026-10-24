@@ -25,12 +25,14 @@ struct EditorView: View {
                             effects: vm.effects,
                             duration: vm.duration,
                             playhead: vm.playhead,
-                            selected: vm.selectedEffectID
+                            selected: vm.selectedEffectID,
+                            speedMarks: vm.speedMarks
                         )
                         addButtons
                         effectList
                         inspector
                         speedSection
+                        rampSection
                         stabilizationSection
                         infoBar
                     }
@@ -320,6 +322,80 @@ struct EditorView: View {
         .background(RoundedRectangle(cornerRadius: 12).fill(Theme.surface))
     }
 
+    private var rampSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Label("Rampes de vitesse", systemImage: "chart.line.uptrend.xyaxis")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(Theme.textPrimary)
+                Spacer()
+                if !vm.speedPoints.isEmpty {
+                    Button("Tout effacer") { vm.clearSpeedPoints() }
+                        .font(.caption)
+                        .foregroundColor(Theme.textSecondary)
+                }
+            }
+
+            HStack(spacing: 8) {
+                rampButton("Slow-mo punch", icon: "tortoise.fill") { vm.addSlowMoPunch() }
+                rampButton("Burst x2.5", icon: "hare.fill") { vm.addSpeedBurst() }
+            }
+            rampButton("Point de vitesse ici", icon: "plus.circle") {
+                vm.addSpeedPoint(speed: vm.speed)
+            }
+
+            if vm.speedPoints.isEmpty {
+                Text("Place la tête de lecture sur l'impact, puis choisis une rampe. Les points jaunes de la timeline sont les points de vitesse.")
+                    .font(.caption)
+                    .foregroundColor(Theme.textSecondary)
+            } else {
+                Text("Une rampe est active : elle remplace le réglage de vitesse global. Entre deux points, la vitesse varie en douceur.")
+                    .font(.caption)
+                    .foregroundColor(Theme.textSecondary)
+                ForEach(vm.speedPoints) { point in
+                    HStack {
+                        Text(preciseTimeString(point.time))
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundColor(Theme.textSecondary)
+                            .frame(width: 56, alignment: .leading)
+                        Slider(
+                            value: Binding(
+                                get: { point.speed },
+                                set: { vm.updateSpeedPoint(id: point.id, speed: $0) }
+                            ),
+                            in: TimeMap.minSpeed...TimeMap.maxSpeed
+                        )
+                        .tint(Color.yellow)
+                        Text(String(format: "x%.2f", point.speed))
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundColor(Theme.textSecondary)
+                            .frame(width: 50, alignment: .trailing)
+                        Button(role: .destructive) {
+                            vm.removeSpeedPoint(id: point.id)
+                        } label: {
+                            Image(systemName: "trash")
+                        }
+                        .accessibilityLabel("Supprimer le point de vitesse")
+                    }
+                }
+            }
+        }
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 12).fill(Theme.surface))
+    }
+
+    private func rampButton(_ title: String, icon: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: icon)
+                .font(.caption.weight(.semibold))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
+                .background(RoundedRectangle(cornerRadius: 10).fill(Color.yellow.opacity(0.2)))
+                .foregroundColor(.white)
+        }
+        .disabled(!vm.hasClip)
+    }
+
     private var stabilizationSection: some View {
         VStack(alignment: .leading, spacing: 6) {
             Toggle(isOn: Binding(
@@ -390,6 +466,7 @@ struct EffectTimeline: View {
     let duration: Double
     let playhead: Double
     let selected: UUID?
+    var speedMarks: [Double] = []
 
     var body: some View {
         GeometryReader { geo in
@@ -403,6 +480,12 @@ struct EffectTimeline: View {
                         .opacity(effect.id == selected ? 1 : 0.6)
                         .frame(width: max(CGFloat(effect.duration / total) * width, 6), height: 22)
                         .offset(x: CGFloat(effect.start / total) * width)
+                }
+                ForEach(Array(speedMarks.enumerated()), id: \.offset) { _, mark in
+                    Rectangle()
+                        .fill(Color.yellow)
+                        .frame(width: 2, height: 36)
+                        .offset(x: min(CGFloat(mark / total) * width, width - 2))
                 }
                 Rectangle()
                     .fill(Color.white)

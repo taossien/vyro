@@ -37,6 +37,14 @@ struct EffectModel: Codable, Identifiable, Equatable {
     var effectVersion: Int = 1
 }
 
+/// Point de vitesse d'une rampe : à `time` (secondes du fichier source), le clip joue à `speed`.
+/// Entre deux points la vitesse varie linéairement (time remapping).
+struct SpeedPointModel: Codable, Identifiable, Equatable {
+    var id: UUID
+    var time: Double
+    var speed: Double
+}
+
 struct ClipModel: Codable, Identifiable, Equatable {
     var id: UUID
     /// Nom du fichier copié dans le dossier Media local (jamais un chemin temporaire).
@@ -48,6 +56,7 @@ struct ClipModel: Codable, Identifiable, Equatable {
     var effects: [EffectModel] = []
     /// Optionnels : les projets sauvegardés avant la Phase 5 restent lisibles.
     var stabilizationEnabled: Bool?
+    var speedPoints: [SpeedPointModel]?
 }
 
 struct TrackModel: Codable, Identifiable, Equatable {
