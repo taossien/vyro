@@ -17,6 +17,11 @@ struct RenderPlan {
     /// Découpe en secondes du fichier source (trimOut nil = jusqu'à la fin).
     var trimIn: Double = 0
     var trimOut: Double?
+    /// Musique de fond (nil = aucune), volumes 0...1, décalage de départ dans le morceau.
+    var musicURL: URL?
+    var musicVolume: Double = 0.8
+    var musicOffset: Double = 0
+    var originalVolume: Double = 1
 
     /// Faux si le plan ne modifie pas les images (aucun effet actif, pas de stabilisation).
     var needsRendering: Bool {
@@ -31,6 +36,7 @@ struct BuiltPipeline {
     let duration: Double
     let renderSize: CGSize
     let timeMap: TimeMap
+    let audioMix: AVAudioMix?
 }
 
 /// Presets d'export : la taille maximale du grand côté, jamais d'agrandissement.
@@ -105,11 +111,13 @@ enum VideoPipeline {
         )
         let isTrimmed = plan.trimIn > 0.001 || (plan.trimOut.map { $0 < duration.seconds - 0.001 } ?? false)
         let isPlain = plan.speedPoints.isEmpty && abs(plan.speed - 1) < 0.001 && !isTrimmed
+            && plan.musicURL == nil && abs(plan.originalVolume - 1) < 0.01
 
         // Vitesse normale : on traite le fichier tel quel. Sinon, on assemble des tronçons.
         let base: AVAsset
         var activeTrack: AVAssetTrack = sourceVideo
         var outputDuration = duration
+        var audioMix: AVMutableAudioMix?
         if isPlain {
             base = asset
         } else {
@@ -146,6 +154,49 @@ enum VideoPipeline {
                 cursor = cursor + target
             }
             outputDuration = composition.duration
+
+            // Volumes : son d'origine, puis musique (fondu de 0,5 s à la fin).
+            var mixParameters: [AVMutableAudioMixInputParameters] = []
+            if let audio {
+                let parameters = AVMutableAudioMixInputParameters(track: audio)
+                parameters.setVolume(Float(plan.originalVolume), at: .zero)
+                mixParameters.append(parameters)
+            }
+            if let musicURL = plan.musicURL {
+                let musicAsset = AVURLAsset(url: musicURL)
+                if let musicTrack = try? await musicAsset.loadTracks(withMediaType: .audio).first,
+                   let musicDuration = try? await musicAsset.load(.duration),
+                   musicDuration.seconds.isFinite,
+                   let musicCompositionTrack = composition.addMutableTrack(
+                       withMediaType: .audio,
+                       preferredTrackID: kCMPersistentTrackID_Invalid
+                   ) {
+                    let offset = CMTime(seconds: min(max(plan.musicOffset, 0), max(musicDuration.seconds - 0.5, 0)),
+                                        preferredTimescale: 600)
+                    let length = CMTimeMinimum(musicDuration - offset, outputDuration)
+                    if length > .zero {
+                        try? musicCompositionTrack.insertTimeRange(
+                            CMTimeRange(start: offset, duration: length), of: musicTrack, at: .zero
+                        )
+                        let parameters = AVMutableAudioMixInputParameters(track: musicCompositionTrack)
+                        let volume = Float(plan.musicVolume)
+                        parameters.setVolume(volume, at: .zero)
+                        let fade = CMTime(seconds: 0.5, preferredTimescale: 600)
+                        if length > fade {
+                            parameters.setVolumeRamp(
+                                fromStartVolume: volume, toEndVolume: 0,
+                                timeRange: CMTimeRange(start: length - fade, duration: fade)
+                            )
+                        }
+                        mixParameters.append(parameters)
+                    }
+                }
+            }
+            if !mixParameters.isEmpty {
+                let mix = AVMutableAudioMix()
+                mix.inputParameters = mixParameters
+                audioMix = mix
+            }
             activeTrack = track
             base = composition
         }
@@ -176,7 +227,8 @@ enum VideoPipeline {
             videoComposition: videoComposition,
             duration: outputDuration.seconds,
             renderSize: finalSize,
-            timeMap: timeMap
+            timeMap: timeMap,
+            audioMix: audioMix
         )
     }
 
@@ -297,6 +349,7 @@ enum VideoPipeline {
             throw PipelineError.exportFailed("session indisponible")
         }
         session.videoComposition = built.videoComposition
+        session.audioMix = built.audioMix
         session.outputURL = output
         session.outputFileType = .mp4
         session.audioTimePitchAlgorithm = .spectral

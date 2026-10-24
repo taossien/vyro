@@ -51,6 +51,18 @@ enum ProjectStore {
             .sorted { $0.modificationDate > $1.modificationDate }
     }
 
+    // MARK: Rythme (temps forts d'un morceau)
+
+    static func saveBeats(_ beats: [Double], for mediaFileName: String) {
+        guard let encoded = try? JSONEncoder().encode(beats) else { return }
+        try? encoded.write(to: mediaDirectory.appendingPathComponent(mediaFileName + ".beats.json"), options: .atomic)
+    }
+
+    static func loadBeats(for mediaFileName: String) -> [Double]? {
+        guard let data = try? Data(contentsOf: mediaDirectory.appendingPathComponent(mediaFileName + ".beats.json")) else { return nil }
+        return try? JSONDecoder().decode([Double].self, from: data)
+    }
+
     // MARK: Stabilisation (données calculées, stockées à côté du média)
 
     private static func stabilizationURL(for mediaFileName: String) -> URL {

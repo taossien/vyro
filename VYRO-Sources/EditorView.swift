@@ -7,12 +7,14 @@
 import SwiftUI
 import AVFoundation
 import UIKit
+import UniformTypeIdentifiers
 
 struct EditorView: View {
     @StateObject private var vm: EditorViewModel
     @State private var panel: ToolPanel?
 
-    enum ToolPanel { case speed, stabilization, trim }
+    enum ToolPanel { case speed, stabilization, trim, music }
+    @State private var showMusicPicker = false
 
     init(project: ProjectModel? = nil) {
         _vm = StateObject(wrappedValue: EditorViewModel(project: project))
@@ -66,6 +68,9 @@ struct EditorView: View {
             MediaImporter { url in
                 vm.loadClip(at: url)
             }
+        }
+        .fileImporter(isPresented: $showMusicPicker, allowedContentTypes: [.audio]) { result in
+            if case .success(let url) = result { vm.importMusic(from: url) }
         }
         .sheet(isPresented: $vm.showExportDone) {
             ExportDoneView(url: vm.exportedURL)
@@ -168,6 +173,7 @@ struct EditorView: View {
     // MARK: Barre d'outils
 
     private var toolbar: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
         HStack(spacing: 0) {
             toolButton("Zoom", icon: "plus.magnifyingglass", color: Theme.accent, active: vm.selectedEffect?.type == .zoom) {
                 haptic()
@@ -201,6 +207,12 @@ struct EditorView: View {
                 vm.selectedEffectID = nil
                 panel = panel == .stabilization ? nil : .stabilization
             }
+            toolButton("Musique", icon: "music.note", color: .mint, active: panel == .music || vm.musicName != nil) {
+                vm.selectedEffectID = nil
+                panel = panel == .music ? nil : .music
+            }
+        }
+        .padding(.horizontal, 8)
         }
         .padding(.top, 8)
         .padding(.bottom, 6)
@@ -217,7 +229,7 @@ struct EditorView: View {
                     .font(.caption2.weight(.medium))
                     .foregroundColor(active ? color : Theme.textSecondary)
             }
-            .frame(maxWidth: .infinity)
+            .frame(width: 66)
         }
         .disabled(!vm.hasClip)
     }
@@ -234,6 +246,8 @@ struct EditorView: View {
             panelContainer(title: effect.title, icon: effect.systemImage) { effectPanel(effect) }
         } else if panel == .speed {
             panelContainer(title: "Vitesse", icon: "speedometer") { speedPanel }
+        } else if panel == .music {
+            panelContainer(title: "Musique", icon: "music.note") { musicPanel }
         } else if panel == .trim {
             panelContainer(title: "Découpe", icon: "scissors") { trimPanel }
         } else if panel == .stabilization {
@@ -462,6 +476,54 @@ struct EditorView: View {
         }
     }
 
+    // MARK: Musique
+
+    private var musicPanel: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if vm.musicName == nil {
+                Text("Ajoute un morceau : VYRO détecte son rythme, l'affiche sur la timeline et aimante tes effets dessus.")
+                    .font(.caption)
+                    .foregroundColor(Theme.textSecondary)
+                actionButton("Choisir un morceau", icon: "music.note.list", tint: .mint) { showMusicPicker = true }
+            } else {
+                if vm.isAnalyzingBeats {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                        Text("Détection du rythme…").font(.caption).foregroundColor(Theme.textSecondary)
+                    }
+                } else {
+                    Text(String(format: "%d temps forts détectés", vm.beats.count))
+                        .font(.caption)
+                        .foregroundColor(Theme.textSecondary)
+                }
+                sliderRow(label: "Musique",
+                          value: Binding(get: { vm.musicVolume }, set: { vm.setMusicVolume($0) }),
+                          range: 0...1,
+                          display: String(format: "%.0f %%", vm.musicVolume * 100))
+                sliderRow(label: "Origine",
+                          value: Binding(get: { vm.originalVolume }, set: { vm.setOriginalVolume($0) }),
+                          range: 0...1,
+                          display: String(format: "%.0f %%", vm.originalVolume * 100))
+                sliderRow(label: "Départ",
+                          value: Binding(get: { vm.musicOffset }, set: { vm.setMusicOffset($0) }),
+                          range: 0...max((vm.beats.last ?? 30), 5),
+                          display: preciseTimeString(vm.musicOffset))
+                Toggle("Aimanter les effets sur le rythme", isOn: $vm.snapToBeats)
+                    .font(.footnote)
+                    .foregroundColor(Theme.textPrimary)
+                    .tint(Theme.accent)
+                HStack(spacing: 10) {
+                    actionButton("Zoom / temps", icon: "wand.and.stars", tint: .mint) { vm.autoZoomOnBeats(every: 1) }
+                    actionButton("Zoom / 2 temps", icon: "wand.and.stars", tint: .mint) { vm.autoZoomOnBeats(every: 2) }
+                }
+                HStack(spacing: 10) {
+                    actionButton("Changer", icon: "arrow.triangle.2.circlepath", tint: Theme.accent) { showMusicPicker = true }
+                    actionButton("Retirer", icon: "trash", tint: .red) { vm.removeMusic() }
+                }
+            }
+        }
+    }
+
     // MARK: Découpe
 
     private var trimPanel: some View {
@@ -567,6 +629,14 @@ struct EditorTimeline: View {
                 }
                 .padding(.vertical, 8)
 
+                ForEach(Array(vm.beatMarks.enumerated()), id: \.offset) { _, beat in
+                    Rectangle()
+                        .fill(Color.mint.opacity(0.35))
+                        .frame(width: 1, height: geo.size.height)
+                        .offset(x: CGFloat(beat / total) * width)
+                        .allowsHitTesting(false)
+                }
+
                 Rectangle()
                     .fill(Color.white)
                     .frame(width: 2, height: geo.size.height)
@@ -603,7 +673,7 @@ struct EditorTimeline: View {
                     color: color,
                     selected: effect.id == vm.selectedEffectID,
                     onSelect: { onSelectEffect(effect.id) },
-                    onMove: { newStart in vm.updateEffect(id: effect.id) { $0.start = newStart } }
+                    onMove: { newStart in vm.updateEffect(id: effect.id) { $0.start = vm.snap(newStart) } }
                 )
             }
         }

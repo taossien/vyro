@@ -60,6 +60,11 @@ struct ClipModel: Codable, Identifiable, Equatable {
     /// Découpe (secondes du fichier source). nil = début / fin du fichier.
     var trimIn: Double?
     var trimOut: Double?
+    /// Musique de fond (fichier copié dans Media), volumes 0...1, départ dans le morceau (s).
+    var musicFileName: String?
+    var musicVolume: Double?
+    var originalVolume: Double?
+    var musicOffset: Double?
 }
 
 struct TrackModel: Codable, Identifiable, Equatable {

@@ -94,8 +94,100 @@ final class EditorViewModel: ObservableObject {
             speedPoints: speedPoints,
             stabilization: stabilizationEnabled ? stabilizationData : nil,
             trimIn: trimIn,
-            trimOut: project.tracks.first?.clips.first?.trimOut
+            trimOut: project.tracks.first?.clips.first?.trimOut,
+            musicURL: musicURL,
+            musicVolume: musicVolume,
+            musicOffset: musicOffset,
+            originalVolume: originalVolume
         )
+    }
+
+    // MARK: - Musique et rythme
+
+    @Published private(set) var beats: [Double] = []      // temps du morceau
+    @Published var isAnalyzingBeats = false
+    @Published var snapToBeats = true
+
+    private var clip: ClipModel? { project.tracks.first?.clips.first }
+    var musicName: String? { clip?.musicFileName }
+    var musicURL: URL? {
+        clip?.musicFileName.map { ProjectStore.mediaDirectory.appendingPathComponent($0) }
+    }
+    var musicVolume: Double { clip?.musicVolume ?? 0.8 }
+    var originalVolume: Double { clip?.originalVolume ?? 1 }
+    var musicOffset: Double { clip?.musicOffset ?? 0 }
+
+    /// Temps forts placés sur le montage (temps de sortie).
+    var beatMarks: [Double] {
+        beats.map { $0 - musicOffset }.filter { $0 >= 0 && $0 <= duration }
+    }
+
+    /// Aimante un instant sur le temps fort le plus proche (à 0,12 s près).
+    func snap(_ time: Double) -> Double {
+        guard snapToBeats, let nearest = beatMarks.min(by: { abs($0 - time) < abs($1 - time) }),
+              abs(nearest - time) <= 0.12 else { return time }
+        return nearest
+    }
+
+    /// Copie le morceau choisi dans le dossier Media puis détecte son rythme.
+    func importMusic(from picked: URL) {
+        let scoped = picked.startAccessingSecurityScopedResource()
+        defer { if scoped { picked.stopAccessingSecurityScopedResource() } }
+        let name = UUID().uuidString + "." + (picked.pathExtension.isEmpty ? "m4a" : picked.pathExtension)
+        let destination = ProjectStore.mediaDirectory.appendingPathComponent(name)
+        do {
+            try FileManager.default.copyItem(at: picked, to: destination)
+        } catch {
+            errorMessage = "Impossible de copier ce morceau : " + error.localizedDescription
+            return
+        }
+        mutateClip {
+            $0.musicFileName = name
+            $0.musicOffset = nil
+        }
+        beats = []
+        scheduleRebuild()
+        analyzeBeats(fileName: name)
+    }
+
+    private func analyzeBeats(fileName: String) {
+        if let cached = ProjectStore.loadBeats(for: fileName) { beats = cached; return }
+        isAnalyzingBeats = true
+        let url = ProjectStore.mediaDirectory.appendingPathComponent(fileName)
+        Task {
+            defer { isAnalyzingBeats = false }
+            do {
+                let found = try await BeatAnalyzer.analyze(url: url)
+                ProjectStore.saveBeats(found, for: fileName)
+                if musicName == fileName { beats = found }
+                if found.isEmpty { errorMessage = "Aucun rythme net détecté dans ce morceau." }
+            } catch {
+                errorMessage = "Analyse du rythme impossible : " + error.localizedDescription
+            }
+        }
+    }
+
+    func removeMusic() {
+        mutateClip { $0.musicFileName = nil; $0.musicOffset = nil }
+        beats = []
+        scheduleRebuild()
+    }
+
+    func setMusicVolume(_ value: Double) { mutateClip { $0.musicVolume = value }; scheduleRebuild() }
+    func setOriginalVolume(_ value: Double) { mutateClip { $0.originalVolume = value }; scheduleRebuild() }
+    func setMusicOffset(_ value: Double) { mutateClip { $0.musicOffset = value <= 0.001 ? nil : value }; scheduleRebuild() }
+
+    /// Place un zoom sur un temps fort sur `every` (1 = tous, 2 = un sur deux...).
+    func autoZoomOnBeats(every: Int) {
+        guard hasClip, duration > 0 else { return }
+        let marks = beatMarks.enumerated().filter { $0.offset % max(every, 1) == 0 }.map { $0.element }
+        guard !marks.isEmpty else { return }
+        mutateClip { clip in
+            for time in marks where time < duration - 0.1 {
+                clip.effects.append(.zoom(start: time, duration: 0.3, peak: 1.25))
+            }
+        }
+        scheduleRebuild()
     }
 
     // MARK: - Découpe
@@ -218,6 +310,7 @@ final class EditorViewModel: ObservableObject {
         clipURL = url
         speed = min(max(clip.speed, VideoPipeline.minSpeed), VideoPipeline.maxSpeed)
         hasClip = true
+        if let music = clip.musicFileName { analyzeBeats(fileName: music) }
         if clip.stabilizationEnabled == true,
            let data = ProjectStore.loadStabilization(for: clip.mediaFileName) {
             stabilizationData = data
@@ -247,6 +340,7 @@ final class EditorViewModel: ObservableObject {
 
             let item = AVPlayerItem(asset: built.composition)
             item.videoComposition = built.videoComposition
+            item.audioMix = built.audioMix
             item.audioTimePitchAlgorithm = .spectral
             observeEnd(of: item)
             statusObservation = item.observe(\.status, options: [.new]) { [weak self] item, _ in
@@ -341,7 +435,7 @@ final class EditorViewModel: ObservableObject {
     private func addEffect(_ effect: EffectModel) {
         guard hasClip, duration > 0 else { return }
         var effect = effect
-        effect.start = min(max(playhead, 0), max(duration - 0.1, 0))
+        effect.start = min(max(snap(playhead), 0), max(duration - 0.1, 0))
         effect.duration = min(effect.duration, max(duration - effect.start, 0.1))
         mutateClip { $0.effects.append(effect) }
         selectedEffectID = effect.id

@@ -50,3 +50,14 @@ génère un clip synthétique avec un tremblement connu.
 ## Suite
 
 Validation terrain avec 20 à 30 gaming editors, puis TestFlight (compte Apple Developer requis, environ 99 $/an).
+
+## Ajouts récents
+
+- Effets : Zoom (courbes punch / doux / claque), Shake, Glitch (saccades), Flash blanc.
+- Découpe du clip (début / fin), rampes de vitesse, stabilisation.
+- Musique : import d'un morceau, détection des temps forts (BeatAnalyzer), aimantation des effets, zoom automatique sur les temps.
+- Export : Original, 1080p, 720p.
+- Annuler / rétablir, dupliquer un effet.
+
+Tous ces rendus (effets, découpe, musique, export) sont à valider sur un vrai iPhone : le simulateur iOS 27 ne lit pas les compositions vidéo.
+Limites connues : un seul clip par montage, effets positionnés en temps de montage (ils ne suivent pas une découpe), Glitch sans séparation RVB.
