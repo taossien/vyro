@@ -1,59 +1,52 @@
 # VYRO — Make every frame hit.
 
-Éditeur vidéo mobile spécialisé gaming edit. iPhone / Swift / SwiftUI / AVFoundation.
+Éditeur vidéo mobile pensé pour les gaming edits. iPhone, Swift, SwiftUI, AVFoundation. iOS 16+.
 
-## Phase 1 — Squelette fonctionnel MVP
+## Ce que fait l'app
 
-Ce dépôt contient le code source Swift de la Phase 1 (dossier VYRO-Sources/) :
-interface sombre VYRO, écran d'accueil avec liste de projets, éditeur avec
-import de clip (Photos), lecture AVPlayer avec tête de lecture, modèle de
-projet versionné (schemaVersion) et sauvegarde locale JSON.
+- Import d'un clip depuis la photothèque, lecture, tête de lecture, projets sauvegardés en local (JSON versionné).
+- **Zoom** : effet "punch" (montée rapide, retour doux), début, durée et intensité réglables.
+- **Shake** : secousse déterministe (seed fixe), identique à chaque lecture et à l'export.
+- **Vitesse** constante de x0.25 à x4 (audio conservé).
+- **Stabilisation** : analyse du mouvement (Vision), on retire les tremblements et on garde les mouvements voulus ; léger recadrage.
+- **Export** en MP4 avec exactement le même pipeline que l'aperçu, puis partage / enregistrement dans Photos.
 
-## Mise en place dans Xcode (une seule fois)
+## Lancer le projet
 
-1. Ouvrir Xcode, File > New > Project, iOS > App, Next.
-   - Product Name : VYRO
-   - Interface : SwiftUI — Language : Swift
-   - Storage : None
-2. Choisir l'emplacement : LE dossier vyro cloné (le projet est créé DANS ce dossier).
-   ATTENTION : décocher "Create Git repository" (il existe déjà).
-3. Dans le navigateur Xcode (colonne de gauche) :
-   - Supprimer ContentView.swift ET VYROApp.swift du template, Move to Trash.
-   - Glisser le dossier VYRO-Sources dans le navigateur :
-     - "Copy items if needed" : DECOCHE (les fichiers restent versionnés par git),
-     - Cocher la target VYRO.
-4. Target VYRO, General, Minimum Deployments : iOS 16.0.
-5. Brancher l'iPhone, sélectionner ton appareil comme destination, Cmd+R.
+1. Ouvrir `VYRO.xcodeproj` dans Xcode.
+2. Choisir un iPhone (réel de préférence) et lancer (Cmd+R).
 
-## Premier commit du projet Xcode
+Important : le rendu des effets (zoom, shake, stabilisation, export) utilise les compositions vidéo
+d'AVFoundation. Le simulateur iOS 27.0 ne sait pas les lire (erreur -12784) ni décoder les images
+(`Cannot Decode`). Teste donc sur un iPhone réel. En build Debug, un bouton "Charger un clip de test"
+génère un clip synthétique avec un tremblement connu.
 
-    cd vyro
-    git add VYRO.xcodeproj VYRO-Sources README.md .gitignore
-    git commit -m "Ajout projet Xcode + squelette Phase 1"
-    git push
+## Structure du code (VYRO-Sources/)
 
-## Validation Phase 1 (checklist)
+| Fichier | Rôle |
+| --- | --- |
+| VYROApp.swift | Point d'entrée, thème sombre |
+| Theme.swift | Couleurs, formats de temps |
+| Models.swift | Project / Track / Clip / Effect (Codable, versionné) |
+| ProjectStore.swift | Sauvegarde JSON, médias, données de stabilisation |
+| MediaImporter.swift | Sélecteur de vidéos (PHPicker), copie locale |
+| Effects.swift | Effets déterministes (zoom, shake) et données de stabilisation |
+| VideoPipeline.swift | Pipeline unique aperçu + export (vitesse, instructions de cadrage) |
+| StabilizationAnalyzer.swift | Analyse Vision, lissage, correction |
+| EditorViewModel.swift | Logique de l'éditeur |
+| EditorView.swift | Interface de l'éditeur |
+| HomeView.swift | Accueil et liste des projets |
+| DemoClip.swift | Clip de test (Debug uniquement) |
 
-- [ ] L'app se lance sans planter.
-- [ ] Le bouton + crée un projet et ouvre l'éditeur.
-- [ ] L'icône d'import ouvre la photothèque filtrée sur les vidéos.
-- [ ] Un clip importé s'affiche dans l'aperçu et se lit.
-- [ ] La tête de lecture suit la lecture ; le slider permet de naviguer.
-- [ ] La durée s'affiche ; l'heure se met à jour.
-- [ ] Le projet apparaît dans la liste d'accueil après retour.
-- [ ] Un clip illisible affiche un message d'erreur compréhensible.
+## Checklist de validation sur iPhone
 
-## Structure du code
+- [ ] Import d'un clip, lecture, tête de lecture.
+- [ ] Ajout d'un Zoom : l'aperçu zoome à l'instant voulu, les réglages agissent en direct.
+- [ ] Ajout d'un Shake : même secousse à chaque lecture.
+- [ ] Vitesse x0.5 / x2 : durée et son cohérents.
+- [ ] Stabilisation sur un clip qui tremble : image plus calme, mouvements voulus conservés.
+- [ ] Export : la vidéo exportée est identique à l'aperçu (effets aux mêmes instants).
 
-- VYROApp.swift        : Point d'entrée SwiftUI, thème sombre
-- Theme.swift          : Couleurs et identité visuelle VYRO
-- Models.swift         : Project / Track / Clip / Effect / Keyframe (Codable, versionné)
-- ProjectStore.swift   : Sauvegarde/chargement JSON + gestion des médias
-- MediaImporter.swift  : Sélecteur PHPicker (vidéos uniquement), copie locale
-- EditorViewModel.swift: Logique : AVPlayer, durée, tête de lecture, erreurs
-- EditorView.swift     : Éditeur : aperçu, contrôles de lecture, import
-- HomeView.swift       : Accueil : liste des projets, création
+## Suite
 
-## Prochaines phases
-
-Phase 2 : zoom exportable (pipeline AVVideoComposition partagé préview/export).
+Validation terrain avec 20 à 30 gaming editors, puis TestFlight (compte Apple Developer requis, environ 99 $/an).

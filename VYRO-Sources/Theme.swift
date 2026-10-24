@@ -20,3 +20,10 @@ func timeString(_ seconds: Double) -> String {
     let total = Int(seconds.rounded())
     return String(format: "%d:%02d", total / 60, total % 60)
 }
+
+/// Formate un temps en secondes vers "m:ss.d" (dixièmes), pour le placement précis des effets.
+func preciseTimeString(_ seconds: Double) -> String {
+    guard seconds.isFinite, seconds >= 0 else { return "0:00.0" }
+    let tenths = Int((seconds * 10).rounded())
+    return String(format: "%d:%02d.%d", tenths / 600, (tenths / 10) % 60, tenths % 10)
+}

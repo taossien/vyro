@@ -1,4 +1,0 @@
-cd ~/Desktop && git clone https://github.com/taossien/vyro.git 2>/dev/null; cd vyro
-mv ~/Downloads/*.download* ~/Desktop/vyro/setup.sh 2>/dev/null || mv ~/Downloads/setup.sh ~/Desktop/vyro/setup.sh
-bash setup.sh
-

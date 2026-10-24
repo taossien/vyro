@@ -50,4 +50,20 @@ enum ProjectStore {
             }
             .sorted { $0.modificationDate > $1.modificationDate }
     }
+
+    // MARK: Stabilisation (données calculées, stockées à côté du média)
+
+    private static func stabilizationURL(for mediaFileName: String) -> URL {
+        mediaDirectory.appendingPathComponent(mediaFileName + ".stab.json")
+    }
+
+    static func saveStabilization(_ data: StabilizationData, for mediaFileName: String) {
+        guard let encoded = try? JSONEncoder().encode(data) else { return }
+        try? encoded.write(to: stabilizationURL(for: mediaFileName), options: .atomic)
+    }
+
+    static func loadStabilization(for mediaFileName: String) -> StabilizationData? {
+        guard let data = try? Data(contentsOf: stabilizationURL(for: mediaFileName)) else { return nil }
+        return try? JSONDecoder().decode(StabilizationData.self, from: data)
+    }
 }

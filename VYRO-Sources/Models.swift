@@ -46,6 +46,8 @@ struct ClipModel: Codable, Identifiable, Equatable {
     var sourceOut: Double = 0
     var speed: Double = 1.0
     var effects: [EffectModel] = []
+    /// Optionnels : les projets sauvegardés avant la Phase 5 restent lisibles.
+    var stabilizationEnabled: Bool?
 }
 
 struct TrackModel: Codable, Identifiable, Equatable {
