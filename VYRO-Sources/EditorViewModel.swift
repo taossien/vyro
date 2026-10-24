@@ -154,9 +154,7 @@ final class EditorViewModel: ObservableObject {
             item.videoComposition = built.videoComposition
             item.audioTimePitchAlgorithm = .spectral
             observeEnd(of: item)
-            print("VYRO build: durée", built.duration, "taille", built.renderSize)
             statusObservation = item.observe(\.status, options: [.new]) { [weak self] item, _ in
-                print("VYRO item status", item.status.rawValue, String(describing: item.error))
                 guard item.status == .failed else { return }
                 let nsError = item.error as NSError?
                 let detail = (nsError?.localizedDescription ?? "erreur inconnue")

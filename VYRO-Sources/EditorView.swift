@@ -124,7 +124,11 @@ struct EditorView: View {
             Slider(
                 value: Binding(
                     get: { vm.playhead },
-                    set: { vm.seek(to: $0) }
+                    // Évite de publier un changement pendant la mise à jour de la vue.
+                    set: { newValue in
+                        guard abs(newValue - vm.playhead) > 0.0001 else { return }
+                        vm.seek(to: newValue)
+                    }
                 ),
                 in: 0...max(vm.duration, 0.1),
                 onEditingChanged: { editing in vm.isScrubbing = editing }
