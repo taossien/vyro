@@ -61,3 +61,9 @@ Validation terrain avec 20 à 30 gaming editors, puis TestFlight (compte Apple D
 
 Tous ces rendus (effets, découpe, musique, export) sont à valider sur un vrai iPhone : le simulateur iOS 27 ne lit pas les compositions vidéo.
 Limites connues : un seul clip par montage, effets positionnés en temps de montage (ils ne suivent pas une découpe), Glitch sans séparation RVB.
+
+### Montage multi-clips
+- Scinder un clip à la tête de lecture, ajouter des clips à la suite, les supprimer, les déplacer (gauche/droite).
+- Vitesse, découpe et stabilisation propres à chaque clip ; effets, musique et flou de mouvement globaux sur tout le montage.
+- Les clips de format différent remplissent le format du premier clip (cadrage centré).
+- Limites connues : pas encore de transitions entre clips ; à valider sur un vrai iPhone (vidéos verticales, performances).

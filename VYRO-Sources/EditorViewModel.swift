@@ -21,8 +21,6 @@ final class EditorViewModel: ObservableObject {
     @Published var renderSize: CGSize = .zero
 
     @Published var selectedEffectID: UUID?
-    @Published var speed: Double = 1
-    @Published var stabilizationEnabled = false
     @Published var isAnalyzing = false
     @Published var debugInfo = ""
     @Published private(set) var canUndo = false
@@ -34,24 +32,28 @@ final class EditorViewModel: ObservableObject {
     @Published var exportedURL: URL?
     @Published var showExportDone = false
 
-    @Published private(set) var timeMap: TimeMap?
-    private var clipURL: URL?
-    private var stabilizationData: StabilizationData?
+    /// Position de chaque clip dans le montage (temps de sortie).
+    @Published private(set) var spans: [ClipSpan] = []
+    private var stabilizationCache: [String: StabilizationData] = [:]
     private var timeObserver: Any?
     private var endObserver: NSObjectProtocol?
     private var rebuildTask: Task<Void, Never>?
-    private var undoStack: [ClipModel] = []
-    private var redoStack: [ClipModel] = []
+    private var undoStack: [[ClipModel]] = []
+    private var redoStack: [[ClipModel]] = []
     private var lastUndoRecord = Date.distantPast
     private var statusObservation: NSKeyValueObservation?
 
     init(project: ProjectModel? = nil) {
         if let project = project {
             self.project = project
-            if let clip = project.tracks.first?.clips.first {
-                let url = ProjectStore.mediaDirectory.appendingPathComponent(clip.mediaFileName)
-                if FileManager.default.fileExists(atPath: url.path) {
-                    openExisting(url: url, clip: clip)
+            let all = project.tracks.first?.clips ?? []
+            if !all.isEmpty {
+                let present = all.allSatisfy {
+                    FileManager.default.fileExists(
+                        atPath: ProjectStore.mediaDirectory.appendingPathComponent($0.mediaFileName).path)
+                }
+                if present {
+                    openExisting()
                 } else {
                     errorMessage = "Le média de ce projet est introuvable."
                 }
@@ -67,20 +69,55 @@ final class EditorViewModel: ObservableObject {
         }
     }
 
-    // MARK: - Accès au clip
+    // MARK: - Accès aux clips
 
+    var clips: [ClipModel] { project.tracks.first?.clips ?? [] }
+
+    /// Indice du clip sous la tête de lecture.
+    var currentIndex: Int {
+        guard !clips.isEmpty else { return 0 }
+        let found = spans.lastIndex { playhead >= $0.start - 0.0005 } ?? 0
+        return min(found, clips.count - 1)
+    }
+
+    var currentClip: ClipModel? {
+        let list = clips
+        return list.indices.contains(currentIndex) ? list[currentIndex] : nil
+    }
+
+    private func mediaURL(_ clip: ClipModel) -> URL {
+        ProjectStore.mediaDirectory.appendingPathComponent(clip.mediaFileName)
+    }
+
+    /// Effets : globaux, portés par le premier clip.
     var effects: [EffectModel] {
         project.tracks.first?.clips.first?.effects ?? []
     }
 
+    /// Vitesse et stabilisation : propres au clip sous la tête de lecture.
+    var speed: Double {
+        min(max(currentClip?.speed ?? 1, VideoPipeline.minSpeed), VideoPipeline.maxSpeed)
+    }
+
+    var stabilizationEnabled: Bool {
+        guard let clip = currentClip else { return false }
+        return clip.stabilizationEnabled == true && stabilizationCache[clip.mediaFileName] != nil
+    }
+
     var speedPoints: [SpeedPointModel] {
-        (project.tracks.first?.clips.first?.speedPoints ?? []).sorted { $0.time < $1.time }
+        (currentClip?.speedPoints ?? []).sorted { $0.time < $1.time }
     }
 
     /// Positions (temps du montage) des points de vitesse, pour la timeline.
     var speedMarks: [Double] {
-        guard let timeMap else { return [] }
-        return speedPoints.map { timeMap.outputTime(atSource: $0.time) }
+        var marks: [Double] = []
+        let list = clips
+        for index in spans.indices where list.indices.contains(index) {
+            for point in list[index].speedPoints ?? [] {
+                marks.append(spans[index].start + spans[index].timeMap.outputTime(atSource: point.time))
+            }
+        }
+        return marks
     }
 
     var selectedEffect: EffectModel? {
@@ -89,12 +126,17 @@ final class EditorViewModel: ObservableObject {
 
     private var plan: RenderPlan {
         RenderPlan(
+            clips: clips.map { clip in
+                ClipPlan(
+                    url: mediaURL(clip),
+                    speed: min(max(clip.speed, VideoPipeline.minSpeed), VideoPipeline.maxSpeed),
+                    speedPoints: (clip.speedPoints ?? []).sorted { $0.time < $1.time },
+                    stabilization: clip.stabilizationEnabled == true ? stabilizationCache[clip.mediaFileName] : nil,
+                    trimIn: clip.trimIn ?? 0,
+                    trimOut: clip.trimOut
+                )
+            },
             effects: effects,
-            speed: speed,
-            speedPoints: speedPoints,
-            stabilization: stabilizationEnabled ? stabilizationData : nil,
-            trimIn: trimIn,
-            trimOut: project.tracks.first?.clips.first?.trimOut,
             musicURL: musicURL,
             musicVolume: musicVolume,
             musicOffset: musicOffset,
@@ -201,21 +243,21 @@ final class EditorViewModel: ObservableObject {
     // MARK: - Découpe
 
     /// Début de la découpe, en secondes du fichier source.
-    var trimIn: Double { project.tracks.first?.clips.first?.trimIn ?? 0 }
+    var trimIn: Double { currentClip?.trimIn ?? 0 }
     /// Fin de la découpe, en secondes du fichier source.
-    var trimOut: Double { project.tracks.first?.clips.first?.trimOut ?? sourceDuration }
+    var trimOut: Double { currentClip?.trimOut ?? sourceDuration }
     var fileDuration: Double { sourceDuration }
     var isTrimmed: Bool { trimIn > 0.001 || trimOut < sourceDuration - 0.001 }
 
     func setTrimIn(_ value: Double) {
         let v = min(max(value, 0), trimOut - 0.3)
-        mutateClip { $0.trimIn = v <= 0.001 ? nil : v }
+        mutateCurrent { $0.trimIn = v <= 0.001 ? nil : v }
         scheduleRebuild()
     }
 
     func setTrimOut(_ value: Double) {
         let v = min(max(value, trimIn + 0.3), sourceDuration)
-        mutateClip { $0.trimOut = v >= sourceDuration - 0.001 ? nil : v }
+        mutateCurrent { $0.trimOut = v >= sourceDuration - 0.001 ? nil : v }
         scheduleRebuild()
     }
 
@@ -223,20 +265,34 @@ final class EditorViewModel: ObservableObject {
     func trimEndHere() { setTrimOut(playheadSourceTime) }
 
     func resetTrim() {
-        mutateClip { $0.trimIn = nil; $0.trimOut = nil }
+        mutateCurrent { $0.trimIn = nil; $0.trimOut = nil }
         scheduleRebuild()
     }
 
-    private func mutateClip(_ change: (inout ClipModel) -> Void) {
+    /// Réglages globaux (effets, musique, flou) : portés par le premier clip.
+    private func mutateClip(_ change: (inout ClipModel) -> Void) { mutate(at: 0, change) }
+
+    /// Réglages propres au clip sous la tête de lecture.
+    private func mutateCurrent(_ change: (inout ClipModel) -> Void) { mutate(at: currentIndex, change) }
+
+    private func mutate(at index: Int, _ change: (inout ClipModel) -> Void) {
+        mutateAll { clips in
+            guard clips.indices.contains(index) else { return }
+            change(&clips[index])
+        }
+    }
+
+    /// Toute modification du montage passe ici : une seule étape d'annulation, puis sauvegarde.
+    private func mutateAll(_ change: (inout [ClipModel]) -> Void) {
         guard !project.tracks.isEmpty, !project.tracks[0].clips.isEmpty else { return }
-        let before = project.tracks[0].clips[0]
-        change(&project.tracks[0].clips[0])
-        if project.tracks[0].clips[0] != before { recordUndo(before) }
+        let before = project.tracks[0].clips
+        change(&project.tracks[0].clips)
+        if project.tracks[0].clips != before { recordUndo(before) }
         persist()
     }
 
     /// Les changements rapprochés (glisser un curseur) forment une seule étape d'annulation.
-    private func recordUndo(_ snapshot: ClipModel) {
+    private func recordUndo(_ snapshot: [ClipModel]) {
         let now = Date()
         if now.timeIntervalSince(lastUndoRecord) > 0.6 || undoStack.isEmpty {
             undoStack.append(snapshot)
@@ -253,30 +309,33 @@ final class EditorViewModel: ObservableObject {
     }
 
     func undo() {
-        guard let previous = undoStack.popLast(), !project.tracks.isEmpty, !project.tracks[0].clips.isEmpty else { return }
-        redoStack.append(project.tracks[0].clips[0])
+        guard let previous = undoStack.popLast(), !project.tracks.isEmpty else { return }
+        redoStack.append(project.tracks[0].clips)
         restore(previous)
     }
 
     func redo() {
-        guard let next = redoStack.popLast(), !project.tracks.isEmpty, !project.tracks[0].clips.isEmpty else { return }
-        undoStack.append(project.tracks[0].clips[0])
+        guard let next = redoStack.popLast(), !project.tracks.isEmpty else { return }
+        undoStack.append(project.tracks[0].clips)
         restore(next)
     }
 
-    private func restore(_ clip: ClipModel) {
-        project.tracks[0].clips[0] = clip
-        speed = min(max(clip.speed, VideoPipeline.minSpeed), VideoPipeline.maxSpeed)
-        stabilizationEnabled = clip.stabilizationEnabled == true
-        if stabilizationEnabled, stabilizationData == nil {
-            stabilizationData = ProjectStore.loadStabilization(for: clip.mediaFileName)
-            if stabilizationData == nil { stabilizationEnabled = false }
-        }
-        if let id = selectedEffectID, !clip.effects.contains(where: { $0.id == id }) { selectedEffectID = nil }
+    private func restore(_ snapshot: [ClipModel]) {
+        project.tracks[0].clips = snapshot
+        loadStabilizationCaches()
+        if let id = selectedEffectID, !effects.contains(where: { $0.id == id }) { selectedEffectID = nil }
         lastUndoRecord = .distantPast
         refreshUndoState()
         persist()
         scheduleRebuild()
+    }
+
+    private func loadStabilizationCaches() {
+        for clip in clips where clip.stabilizationEnabled == true && stabilizationCache[clip.mediaFileName] == nil {
+            if let data = ProjectStore.loadStabilization(for: clip.mediaFileName) {
+                stabilizationCache[clip.mediaFileName] = data
+            }
+        }
     }
 
     private func persist() {
@@ -286,27 +345,30 @@ final class EditorViewModel: ObservableObject {
 
     // MARK: - Chargement
 
-    /// Nouveau clip importé : remplace le clip du projet.
+    /// Vidéo importée : premier clip du montage, ou clip ajouté à la suite.
     func loadClip(at url: URL) {
-        clipURL = url
         Task {
             do {
                 let seconds = try await AVURLAsset(url: url).load(.duration).seconds
                 guard seconds.isFinite, seconds > 0 else { throw PipelineError.invalidDuration }
+                let clip = ClipModel(id: UUID(), mediaFileName: url.lastPathComponent, sourceOut: seconds)
 
-                if project.tracks.isEmpty {
-                    project.tracks = [TrackModel(id: UUID())]
+                if hasClip, !clips.isEmpty {
+                    let start = duration
+                    mutateAll { $0.append(clip) }
+                    playhead = start
+                } else {
+                    if project.tracks.isEmpty {
+                        project.tracks = [TrackModel(id: UUID())]
+                    }
+                    project.tracks[0].clips = [clip]
+                    stabilizationCache = [:]
+                    undoStack.removeAll(); redoStack.removeAll(); refreshUndoState()
+                    selectedEffectID = nil
+                    playhead = 0
+                    hasClip = true
+                    persist()
                 }
-                project.tracks[0].clips = [
-                    ClipModel(id: UUID(), mediaFileName: url.lastPathComponent, sourceOut: seconds)
-                ]
-                speed = 1
-                stabilizationEnabled = false
-                stabilizationData = nil
-                undoStack.removeAll(); redoStack.removeAll(); refreshUndoState()
-                selectedEffectID = nil
-                hasClip = true
-                persist()
                 await rebuild()
             } catch {
                 errorMessage = "Impossible de lire ce clip : " + error.localizedDescription
@@ -314,17 +376,94 @@ final class EditorViewModel: ObservableObject {
         }
     }
 
-    private func openExisting(url: URL, clip: ClipModel) {
-        clipURL = url
-        speed = min(max(clip.speed, VideoPipeline.minSpeed), VideoPipeline.maxSpeed)
+    private func openExisting() {
         hasClip = true
-        if let music = clip.musicFileName { analyzeBeats(fileName: music) }
-        if clip.stabilizationEnabled == true,
-           let data = ProjectStore.loadStabilization(for: clip.mediaFileName) {
-            stabilizationData = data
-            stabilizationEnabled = true
-        }
+        if let music = clip?.musicFileName { analyzeBeats(fileName: music) }
+        loadStabilizationCaches()
         Task { await rebuild() }
+    }
+
+    // MARK: - Montage : scinder, supprimer, déplacer
+
+    private func stripGlobals(_ clip: inout ClipModel) {
+        clip.effects = []
+        clip.musicFileName = nil
+        clip.musicVolume = nil
+        clip.originalVolume = nil
+        clip.musicOffset = nil
+        clip.motionBlur = nil
+    }
+
+    /// Réordonne / retire des clips en gardant les réglages globaux sur le premier.
+    private func restructure(_ change: (inout [ClipModel]) -> Void) {
+        mutateAll { clips in
+            let globals = clips[0]
+            change(&clips)
+            guard !clips.isEmpty else { return }
+            for index in clips.indices { stripGlobals(&clips[index]) }
+            clips[0].effects = globals.effects
+            clips[0].musicFileName = globals.musicFileName
+            clips[0].musicVolume = globals.musicVolume
+            clips[0].originalVolume = globals.originalVolume
+            clips[0].musicOffset = globals.musicOffset
+            clips[0].motionBlur = globals.motionBlur
+        }
+    }
+
+    private func rebuildNow() {
+        rebuildTask?.cancel()
+        rebuildTask = Task { await rebuild() }
+    }
+
+    func selectClip(_ index: Int) {
+        guard spans.indices.contains(index) else { return }
+        seek(to: spans[index].start)
+    }
+
+    /// Coupe le clip sous la tête de lecture en deux.
+    func splitAtPlayhead() {
+        guard hasClip, let clip = currentClip, spans.indices.contains(currentIndex) else { return }
+        let index = currentIndex
+        let cut = playheadSourceTime
+        let low = (clip.trimIn ?? 0) + 0.2
+        let high = (clip.trimOut ?? clip.sourceOut) - 0.2
+        guard cut > low, cut < high else {
+            errorMessage = "Place la tête de lecture à l'intérieur du clip, à plus de 0,2 s des bords."
+            return
+        }
+        var right = clip
+        right.id = UUID()
+        stripGlobals(&right)
+        right.trimIn = cut
+        mutateAll { clips in
+            clips[index].trimOut = cut
+            clips.insert(right, at: index + 1)
+        }
+        rebuildNow()
+    }
+
+    func deleteCurrentClip() {
+        guard clips.count > 1, spans.indices.contains(currentIndex) else { return }
+        let index = currentIndex
+        let target = index < clips.count - 1 ? spans[index].start : spans[index - 1].start
+        restructure { $0.remove(at: index) }
+        playhead = target
+        rebuildNow()
+    }
+
+    func moveCurrentClip(by delta: Int) {
+        let index = currentIndex
+        let destination = index + delta
+        guard clips.indices.contains(destination), spans.count == clips.count else { return }
+        var order = Array(clips.indices)
+        order.insert(order.remove(at: index), at: destination)
+        let start = order.prefix(destination).reduce(0.0) { $0 + spans[$1].duration }
+        restructure { clips in
+            let moved = clips.remove(at: index)
+            clips.insert(moved, at: destination)
+        }
+        playhead = start
+        rebuildNow()
     }
 
     // MARK: - Pipeline aperçu
@@ -339,9 +478,9 @@ final class EditorViewModel: ObservableObject {
 
     /// Reconstruit l'aperçu à partir du plan courant (effets, vitesse, stabilisation).
     private func rebuild() async {
-        guard let url = clipURL else { return }
+        guard hasClip, !clips.isEmpty else { return }
         do {
-            let built = try await VideoPipeline.build(url: url, plan: plan)
+            let built = try await VideoPipeline.build(plan: plan)
             let player = ensurePlayer()
             let wasPlaying = isPlaying
             let resume = min(playhead, max(built.duration - 0.05, 0))
@@ -362,7 +501,7 @@ final class EditorViewModel: ObservableObject {
 
             player.replaceCurrentItem(with: item)
             duration = built.duration
-            timeMap = built.timeMap
+            spans = built.spans
             renderSize = built.renderSize
             playhead = resume
             _ = await player.seek(
@@ -510,8 +649,7 @@ final class EditorViewModel: ObservableObject {
 
     func setSpeed(_ value: Double) {
         let clamped = min(max(value, VideoPipeline.minSpeed), VideoPipeline.maxSpeed)
-        speed = clamped
-        mutateClip { $0.speed = clamped }
+        mutateCurrent { $0.speed = clamped }
         scheduleRebuild()
     }
 
@@ -519,16 +657,18 @@ final class EditorViewModel: ObservableObject {
 
     /// Temps source correspondant à la tête de lecture.
     private var playheadSourceTime: Double {
-        timeMap?.sourceTime(atOutput: playhead) ?? playhead * speed
+        guard spans.indices.contains(currentIndex) else { return playhead }
+        let span = spans[currentIndex]
+        return span.timeMap.sourceTime(atOutput: max(playhead - span.start, 0))
     }
 
     private var sourceDuration: Double {
-        project.tracks.first?.clips.first?.sourceOut ?? 0
+        currentClip?.sourceOut ?? 0
     }
 
     private func setSpeedPoints(_ points: [SpeedPointModel]) {
         let cleaned = points.sorted { $0.time < $1.time }
-        mutateClip { $0.speedPoints = cleaned.isEmpty ? nil : cleaned }
+        mutateCurrent { $0.speedPoints = cleaned.isEmpty ? nil : cleaned }
         scheduleRebuild()
     }
 
@@ -586,19 +726,26 @@ final class EditorViewModel: ObservableObject {
     // MARK: - Stabilisation
 
     func setStabilization(_ enabled: Bool) {
-        guard hasClip, let url = clipURL else { return }
+        guard hasClip, let target = currentClip else { return }
+        let id = target.id
+        let fileName = target.mediaFileName
+        let url = mediaURL(target)
+
+        func setFlag(_ value: Bool) {
+            mutateAll { clips in
+                if let index = clips.firstIndex(where: { $0.id == id }) { clips[index].stabilizationEnabled = value }
+            }
+        }
+
         if !enabled {
-            stabilizationEnabled = false
-            mutateClip { $0.stabilizationEnabled = false }
+            setFlag(false)
             scheduleRebuild()
             return
         }
 
-        let fileName = url.lastPathComponent
-        if let cached = stabilizationData ?? ProjectStore.loadStabilization(for: fileName) {
-            stabilizationData = cached
-            stabilizationEnabled = true
-            mutateClip { $0.stabilizationEnabled = true }
+        if let cached = stabilizationCache[fileName] ?? ProjectStore.loadStabilization(for: fileName) {
+            stabilizationCache[fileName] = cached
+            setFlag(true)
             scheduleRebuild()
             return
         }
@@ -613,9 +760,8 @@ final class EditorViewModel: ObservableObject {
                     }
                 }.value
                 ProjectStore.saveStabilization(data, for: fileName)
-                stabilizationData = data
-                stabilizationEnabled = true
-                mutateClip { $0.stabilizationEnabled = true }
+                stabilizationCache[fileName] = data
+                setFlag(true)
                 #if DEBUG
                 debugInfo = DemoClip.report(for: data)
                 #endif
@@ -630,7 +776,7 @@ final class EditorViewModel: ObservableObject {
     // MARK: - Export
 
     func export(preset: ExportPreset = .original) {
-        guard hasClip, let url = clipURL, !isExporting else { return }
+        guard hasClip, !isExporting else { return }
         player?.pause()
         isPlaying = false
         isExporting = true
@@ -638,7 +784,7 @@ final class EditorViewModel: ObservableObject {
         let plan = self.plan
         Task {
             do {
-                let output = try await VideoPipeline.export(url: url, plan: plan, preset: preset) { [weak self] value in
+                let output = try await VideoPipeline.export(plan: plan, preset: preset) { [weak self] value in
                     Task { @MainActor in self?.exportProgress = value }
                 }
                 exportedURL = output

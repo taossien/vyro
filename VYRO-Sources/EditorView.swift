@@ -26,6 +26,7 @@ struct EditorView: View {
                 preview
                     .frame(height: geo.size.height * 0.33)
                 transport
+                if vm.hasClip { clipStrip }
                 EditorTimeline(vm: vm, onSelectEffect: { id in
                     panel = nil
                     vm.selectEffect(id: id)
@@ -61,7 +62,7 @@ struct EditorView: View {
                 } label: {
                     Image(systemName: "plus.rectangle.on.rectangle")
                 }
-                .accessibilityLabel("Changer de vidéo")
+                .accessibilityLabel("Ajouter un clip")
             }
         }
         .sheet(isPresented: $vm.showImporter) {
@@ -167,6 +168,48 @@ struct EditorView: View {
         .foregroundColor(Theme.textPrimary)
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
+        .background(Theme.surface)
+    }
+
+    // MARK: Clips du montage
+
+    private var clipStrip: some View {
+        HStack(spacing: 8) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach(Array(vm.spans.enumerated()), id: \.offset) { index, span in
+                        let current = index == vm.currentIndex
+                        Button { vm.selectClip(index) } label: {
+                            Text(String(index + 1) + " · " + String(format: "%.1f s", span.duration))
+                                .font(.caption.weight(.semibold))
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(Capsule().fill(current ? Theme.accent : Color.white.opacity(0.08)))
+                                .foregroundColor(current ? .white : Theme.textSecondary)
+                        }
+                    }
+                }
+            }
+            Group {
+                Button { haptic(); vm.splitAtPlayhead() } label: { Image(systemName: "scissors") }
+                    .accessibilityLabel("Scinder le clip ici")
+                Button { vm.moveCurrentClip(by: -1) } label: { Image(systemName: "arrow.left") }
+                    .disabled(vm.currentIndex == 0)
+                    .accessibilityLabel("Déplacer le clip vers la gauche")
+                Button { vm.moveCurrentClip(by: 1) } label: { Image(systemName: "arrow.right") }
+                    .disabled(vm.currentIndex >= vm.clips.count - 1)
+                    .accessibilityLabel("Déplacer le clip vers la droite")
+                Button(role: .destructive) { vm.deleteCurrentClip() } label: { Image(systemName: "trash") }
+                    .disabled(vm.clips.count < 2)
+                    .accessibilityLabel("Supprimer le clip")
+                Button { vm.showImporter = true } label: { Image(systemName: "plus") }
+                    .accessibilityLabel("Ajouter un clip")
+            }
+            .font(.system(size: 16))
+            .foregroundColor(Theme.textPrimary)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
         .background(Theme.surface)
     }
 
@@ -726,14 +769,21 @@ struct EditorTimeline: View {
                 .font(.system(size: 10))
                 .foregroundColor(Color.yellow.opacity(0.5))
                 .padding(.leading, 6)
-            if let map = vm.timeMap {
-                ForEach(Array(map.slices.enumerated()), id: \.offset) { _, slice in
+            ForEach(Array(vm.spans.enumerated()), id: \.offset) { _, span in
+                ForEach(Array(span.timeMap.slices.enumerated()), id: \.offset) { _, slice in
                     Rectangle()
                         .fill(slice.speed < 0.99 ? Theme.accentBlue : (slice.speed > 1.01 ? Color.orange : Color.clear))
                         .opacity(0.55)
                         .frame(width: max(CGFloat((slice.outputEnd - slice.outputStart) / total) * width, 1), height: laneHeight - 8)
-                        .offset(x: CGFloat(slice.outputStart / total) * width)
+                        .offset(x: CGFloat((span.start + slice.outputStart) / total) * width)
                 }
+            }
+            // Limites entre les clips.
+            ForEach(Array(vm.spans.dropFirst().enumerated()), id: \.offset) { _, span in
+                Rectangle()
+                    .fill(Color.white.opacity(0.8))
+                    .frame(width: 2, height: laneHeight)
+                    .offset(x: CGFloat(span.start / total) * width - 1)
             }
             ForEach(Array(vm.speedMarks.enumerated()), id: \.offset) { _, mark in
                 Image(systemName: "diamond.fill")

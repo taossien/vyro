@@ -21,8 +21,12 @@ final class VYROInstruction: NSObject, AVVideoCompositionInstructionProtocol {
 
     let trackID: CMPersistentTrackID
     let orientation: CGImagePropertyOrientation
-    let baseSize: CGSize
+    /// Taille du clip une fois orienté, taille du montage, taille de sortie.
+    let sourceSize: CGSize
+    let canvasSize: CGSize
     let finalSize: CGSize
+    /// Début du clip dans le montage (secondes) : les effets sont globaux, la stabilisation est locale.
+    let clipOffset: Double
     let effects: [EffectModel]
     let stabilization: StabilizationData?
     let timeMap: TimeMap
@@ -32,8 +36,10 @@ final class VYROInstruction: NSObject, AVVideoCompositionInstructionProtocol {
     init(timeRange: CMTimeRange,
          trackID: CMPersistentTrackID,
          orientation: CGImagePropertyOrientation,
-         baseSize: CGSize,
+         sourceSize: CGSize,
+         canvasSize: CGSize,
          finalSize: CGSize,
+         clipOffset: Double,
          effects: [EffectModel],
          stabilization: StabilizationData?,
          timeMap: TimeMap,
@@ -42,8 +48,10 @@ final class VYROInstruction: NSObject, AVVideoCompositionInstructionProtocol {
         self.trackID = trackID
         self.requiredSourceTrackIDs = [NSNumber(value: trackID)]
         self.orientation = orientation
-        self.baseSize = baseSize
+        self.sourceSize = sourceSize
+        self.canvasSize = canvasSize
         self.finalSize = finalSize
+        self.clipOffset = clipOffset
         self.effects = effects
         self.stabilization = stabilization
         self.timeMap = timeMap
@@ -123,7 +131,7 @@ enum FrameRenderer {
         var dx = fx.dx
         var dy = fx.dy
         if let stabilization = instruction.stabilization {
-            let c = stabilization.correction(atSourceTime: instruction.timeMap.sourceTime(atOutput: time))
+            let c = stabilization.correction(atSourceTime: instruction.timeMap.sourceTime(atOutput: max(time - instruction.clipOffset, 0)))
             scale *= stabilization.cropScale
             dx += c.dx
             dy -= c.dy      // Vision : axe Y vers le haut ; calque : vers le bas
@@ -132,12 +140,19 @@ enum FrameRenderer {
     }
 
     static func render(source: CIImage, time: Double, instruction: VYROInstruction) -> CIImage {
-        let size = instruction.baseSize
+        let size = instruction.canvasSize
         let w = size.width, h = size.height
         let rect = CGRect(origin: .zero, size: size)
 
         var base = source.oriented(instruction.orientation)
         base = base.transformed(by: CGAffineTransform(translationX: -base.extent.minX, y: -base.extent.minY))
+        // Clip de format différent : il remplit le montage (cadrage centré).
+        let sw = max(base.extent.width, 1), sh = max(base.extent.height, 1)
+        if abs(sw - w) > 0.5 || abs(sh - h) > 0.5 {
+            let fill = max(w / sw, h / sh)
+            base = base.transformed(by: CGAffineTransform(scaleX: fill, y: fill))
+            base = base.transformed(by: CGAffineTransform(translationX: (w - sw * fill) / 2, y: (h - sh * fill) / 2))
+        }
 
         let now = state(at: time, instruction: instruction)
         var image = place(base, now, size: size).clampedToExtent().cropped(to: rect)
