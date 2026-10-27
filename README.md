@@ -127,3 +127,9 @@ Flash, Zoom, Glitch, Flou, Noir, Whip, puis Spin, Glissé, Strobe, Flash zoom, T
 ## Look Cinématique
 
 Nouveaux réglages d'étalonnage (tous optionnels, anciens projets inchangés) : **Teinte ciné** (ombres bleu-vert, lumières orangées), **Pellicule** (noirs relevés), **Grain** animé, **Halo** sur les lumières, **Bandes** noires. Préréglage « Cinématique » dans Look (utilisé par le style Cinéma). Le grain est volontairement discret (12 %) : à valider sur iPhone.
+
+## Export 4K, calques image et masques
+
+- Export « 4K 60 i/s » (HEVC, 3840 px sur le grand côté, 60 images par seconde).
+- Panneau Texte, section « Images et masques » : ajoute une image (logo, sticker, PNG transparent) avec début, durée, taille, position, angle et opacité.
+- Masque flou ou noir : cache l'interface du jeu (chiffres de dégâts, HUD) le temps voulu.

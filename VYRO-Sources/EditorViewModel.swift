@@ -146,6 +146,7 @@ final class EditorViewModel: ObservableObject {
             motionBlur: motionBlurStrength,
             grade: colorGrade,
             texts: texts,
+            stickers: stickers,
             keyframes: keyframes,
             sounds: soundPlans
         )
@@ -291,6 +292,57 @@ final class EditorViewModel: ObservableObject {
             clip.texts = list.isEmpty ? nil : list
         }
         if selectedTextID == id { selectedTextID = nil }
+        scheduleRebuild()
+    }
+
+    // MARK: Calques image et masques
+
+    @Published var selectedStickerID: UUID?
+    var stickers: [StickerOverlay] { project.tracks.first?.clips.first?.stickers ?? [] }
+    var selectedSticker: StickerOverlay? { stickers.first { $0.id == selectedStickerID } }
+
+    private func appendSticker(_ sticker: StickerOverlay) {
+        mutateClip { $0.stickers = ($0.stickers ?? []) + [sticker] }
+        selectedStickerID = sticker.id
+        scheduleRebuild()
+    }
+
+    private var stickerStart: Double { min(max(snap(playhead), 0), max(duration - 0.5, 0)) }
+
+    func addSticker(data: Data) {
+        guard hasClip, duration > 0, let saved = StickerRenderer.save(data) else { return }
+        let start = stickerStart
+        appendSticker(StickerOverlay(id: UUID(), fileName: saved.name, kind: 0, start: start,
+                                     duration: min(2, max(duration - start, 0.5)),
+                                     y: 0.3, size: 0.3, aspect: saved.aspect))
+    }
+
+    /// kind 1 = masque flou, 2 = masque noir (pour cacher l'interface du jeu).
+    func addMask(kind: Int) {
+        guard hasClip, duration > 0 else { return }
+        let start = stickerStart
+        appendSticker(StickerOverlay(id: UUID(), fileName: nil, kind: kind, start: start,
+                                     duration: max(duration - start, 0.5),
+                                     y: 0.08, size: 0.35, aspect: 0.25))
+    }
+
+    func updateSticker(id: UUID, _ change: (inout StickerOverlay) -> Void) {
+        mutateClip { clip in
+            guard var list = clip.stickers, let index = list.firstIndex(where: { $0.id == id }) else { return }
+            change(&list[index])
+            list[index].duration = max(list[index].duration, 0.3)
+            list[index].start = max(list[index].start, 0)
+            clip.stickers = list
+        }
+        scheduleRebuild()
+    }
+
+    func removeSticker(id: UUID) {
+        mutateClip { clip in
+            let list = (clip.stickers ?? []).filter { $0.id != id }
+            clip.stickers = list.isEmpty ? nil : list
+        }
+        if selectedStickerID == id { selectedStickerID = nil }
         scheduleRebuild()
     }
 
@@ -652,6 +704,7 @@ final class EditorViewModel: ObservableObject {
         clip.motionBlur = nil
         clip.colorGrade = nil
         clip.texts = nil
+        clip.stickers = nil
         clip.keyframes = nil
         clip.sounds = nil
     }
@@ -671,6 +724,7 @@ final class EditorViewModel: ObservableObject {
             clips[0].motionBlur = globals.motionBlur
             clips[0].colorGrade = globals.colorGrade
             clips[0].texts = globals.texts
+            clips[0].stickers = globals.stickers
             clips[0].keyframes = globals.keyframes
             clips[0].sounds = globals.sounds
         }
@@ -811,6 +865,13 @@ final class EditorViewModel: ObservableObject {
                 else if texts[i].start + texts[i].duration > time { texts[i].duration += delta }
             }
             clip.texts = texts
+        }
+        if var list = clip.stickers {
+            for i in list.indices {
+                if list[i].start >= time - 0.001 { list[i].start += delta }
+                else if list[i].start + list[i].duration > time { list[i].duration += delta }
+            }
+            clip.stickers = list
         }
         if var frames = clip.keyframes {
             for i in frames.indices where frames[i].time >= time - 0.001 { frames[i].time += delta }

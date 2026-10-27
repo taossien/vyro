@@ -71,6 +71,8 @@ struct ClipModel: Codable, Identifiable, Equatable {
     var colorGrade: ColorGrade?
     /// Textes et sous-titres (globaux, temps du montage).
     var texts: [TextOverlay]?
+    /// Calques image et masques (globaux, temps du montage).
+    var stickers: [StickerOverlay]?
     /// Images clés de mouvement (globales, temps du montage).
     var keyframes: [Keyframe]?
     /// Effets sonores posés sur le montage (globaux, temps du montage).

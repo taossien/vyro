@@ -37,6 +37,7 @@ final class VYROInstruction: NSObject, AVVideoCompositionInstructionProtocol {
     let texts: [TextOverlay]
     let keyframes: [Keyframe]
     let cuts: [CutMark]
+    let stickers: [StickerOverlay]
 
     init(timeRange: CMTimeRange,
          trackID: CMPersistentTrackID,
@@ -52,7 +53,8 @@ final class VYROInstruction: NSObject, AVVideoCompositionInstructionProtocol {
          grade: ColorGrade? = nil,
          texts: [TextOverlay] = [],
          keyframes: [Keyframe] = [],
-         cuts: [CutMark] = []) {
+         cuts: [CutMark] = [],
+         stickers: [StickerOverlay] = []) {
         self.timeRange = timeRange
         self.trackID = trackID
         self.requiredSourceTrackIDs = [NSNumber(value: trackID)]
@@ -69,6 +71,7 @@ final class VYROInstruction: NSObject, AVVideoCompositionInstructionProtocol {
         self.texts = texts
         self.keyframes = keyframes
         self.cuts = cuts
+        self.stickers = stickers
         super.init()
     }
 }
@@ -298,6 +301,10 @@ enum FrameRenderer {
 
         if let overlays = OverlayRenderer.image(effects: instruction.effects, time: time, canvas: size) {
             image = overlays.composited(over: image).cropped(to: rect)
+        }
+
+        for sticker in instruction.stickers where time >= sticker.start && time <= sticker.end {
+            image = StickerRenderer.apply(sticker, over: image, time: time, canvas: size)
         }
 
         for overlay in instruction.texts where time >= overlay.start && time <= overlay.end {

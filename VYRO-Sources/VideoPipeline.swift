@@ -52,6 +52,7 @@ struct RenderPlan {
     var motionBlur: Double = 1
     var grade: ColorGrade?
     var texts: [TextOverlay] = []
+    var stickers: [StickerOverlay] = []
     var keyframes: [Keyframe] = []
     var sounds: [SoundPlan] = []
     /// La musique baisse quand des sous-titres (donc une voix) sont affichés.
@@ -63,8 +64,9 @@ struct RenderPlan {
     var needsRendering: Bool {
         clips.count > 1
             || clips.contains { $0.stabilization != nil }
-            || outputScale < 0.999
+            || abs(outputScale - 1) > 0.001
             || !(grade?.isNeutral ?? true)
+            || !stickers.isEmpty
             || texts.contains { !$0.text.isEmpty }
             || !keyframes.isEmpty
             || effects.contains { $0.enabled }
@@ -91,11 +93,12 @@ struct BuiltPipeline {
 
 /// Presets d'export : la taille maximale du grand côté, jamais d'agrandissement.
 enum ExportPreset: String, CaseIterable, Identifiable {
-    case original, hd1080, smooth60, hd720
+    case original, uhd4k, hd1080, smooth60, hd720
     var id: String { rawValue }
     var title: String {
         switch self {
         case .original: return "Original"
+        case .uhd4k: return "4K 60 i/s"
         case .hd1080: return "1080p"
         case .smooth60: return "1080p 60 i/s"
         case .hd720: return "720p"
@@ -104,15 +107,17 @@ enum ExportPreset: String, CaseIterable, Identifiable {
     var detail: String {
         switch self {
         case .original: return "Qualité maximale, taille d'origine"
+        case .uhd4k: return "Ultra HD (HEVC), fichier très lourd"
         case .hd1080: return "TikTok, Reels, Shorts"
         case .smooth60: return "Effets ultra fluides, fichier plus lourd"
         case .hd720: return "Envoi rapide, fichier léger"
         }
     }
-    var fps: Int? { self == .smooth60 ? 60 : nil }
+    var fps: Int? { (self == .smooth60 || self == .uhd4k) ? 60 : nil }
     var longSide: Double? {
         switch self {
         case .original: return nil
+        case .uhd4k: return 3840
         case .hd1080, .smooth60: return 1920
         case .hd720: return 1280
         }
@@ -180,7 +185,7 @@ enum VideoPipeline {
         // Le format du montage est celui du premier clip.
         let canvas = loaded[0].orientedSize
         var finalSize = canvas
-        if plan.outputScale < 0.999 {
+        if abs(plan.outputScale - 1) > 0.001 {
             finalSize = CGSize(
                 width: (canvas.width * plan.outputScale / 2).rounded() * 2,
                 height: (canvas.height * plan.outputScale / 2).rounded() * 2
@@ -232,7 +237,8 @@ enum VideoPipeline {
                             motionBlur: plan.motionBlur,
                             grade: plan.grade,
                             texts: plan.texts,
-                            keyframes: plan.keyframes
+                            keyframes: plan.keyframes,
+                            stickers: plan.stickers
                         )],
                         finalSize: finalSize, frameRate: frameRate)
                 }
@@ -413,7 +419,8 @@ enum VideoPipeline {
                 grade: plan.grade,
                 texts: plan.texts,
                 keyframes: plan.keyframes,
-                cuts: cuts
+                cuts: cuts,
+                stickers: plan.stickers
             ))
         }
 
@@ -513,7 +520,7 @@ enum VideoPipeline {
         var plan = plan
         plan.fps = preset.fps
         if let side = preset.longSide, let first = plan.clips.first,
-           let size = try? await naturalLongSide(url: first.url), size > side {
+           let size = try? await naturalLongSide(url: first.url), (size > side || preset == .uhd4k) {
             plan.outputScale = side / size
         }
         let built = try await build(plan: plan)
@@ -524,7 +531,7 @@ enum VideoPipeline {
 
         guard let session = AVAssetExportSession(
             asset: built.composition,
-            presetName: AVAssetExportPresetHighestQuality
+            presetName: preset == .uhd4k ? AVAssetExportPresetHEVCHighestQuality : AVAssetExportPresetHighestQuality
         ) else {
             throw PipelineError.exportFailed("session indisponible")
         }

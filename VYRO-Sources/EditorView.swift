@@ -9,10 +9,12 @@ import AVFoundation
 import UIKit
 import UniformTypeIdentifiers
 import Photos
+import PhotosUI
 
 struct EditorView: View {
     @StateObject private var vm: EditorViewModel
     @State private var panel: ToolPanel?
+    @State private var stickerPick: PhotosPickerItem?
 
     enum ToolPanel { case speed, stabilization, trim, music, render, look, text, motion, transition, style, sounds }
     @AppStorage("vyro.advanced") private var advanced = false
@@ -1042,6 +1044,76 @@ struct EditorView: View {
                     }
                     Spacer()
                     Button(role: .destructive) { vm.removeText(id: id) } label: { Image(systemName: "trash") }
+                }
+            }
+            stickerSection
+        }
+    }
+
+    private var stickerSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Divider().background(Color.white.opacity(0.1))
+            Text("Images et masques")
+                .font(.caption.weight(.semibold))
+                .foregroundColor(Theme.textSecondary)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(Array(vm.stickers.enumerated()), id: \.element.id) { index, item in
+                        chip((item.kind == 0 ? "Image " : "Masque ") + String(index + 1),
+                             selected: item.id == vm.selectedStickerID, tint: .orange) { vm.selectedStickerID = item.id }
+                    }
+                    PhotosPicker(selection: $stickerPick, matching: .images) {
+                        Text("+ Image")
+                            .font(.caption.weight(.semibold))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 7)
+                            .background(Capsule().fill(Color.white.opacity(0.08)))
+                            .foregroundColor(Theme.textSecondary)
+                    }
+                    chip("+ Masque flou", selected: false) { vm.addMask(kind: 1) }
+                    chip("+ Masque noir", selected: false) { vm.addMask(kind: 2) }
+                }
+            }
+            .onChange(of: stickerPick) { _, item in
+                guard let item else { return }
+                Task {
+                    if let data = try? await item.loadTransferable(type: Data.self) { vm.addSticker(data: data) }
+                    stickerPick = nil
+                }
+            }
+            if let item = vm.selectedSticker {
+                let id = item.id
+                sliderRow(label: "Début",
+                          value: Binding(get: { item.start }, set: { v in vm.updateSticker(id: id) { $0.start = v } }),
+                          range: 0...max(vm.duration - 0.3, 0.5), display: String(format: "%.1f s", item.start))
+                sliderRow(label: "Durée",
+                          value: Binding(get: { item.duration }, set: { v in vm.updateSticker(id: id) { $0.duration = v } }),
+                          range: 0.3...max(vm.duration, 1), display: String(format: "%.1f s", item.duration))
+                sliderRow(label: "Largeur",
+                          value: Binding(get: { item.size }, set: { v in vm.updateSticker(id: id) { $0.size = v } }),
+                          range: 0.05...1, display: String(format: "%.0f %%", item.size * 100))
+                if item.kind != 0 {
+                    sliderRow(label: "Hauteur",
+                              value: Binding(get: { item.aspect }, set: { v in vm.updateSticker(id: id) { $0.aspect = v } }),
+                              range: 0.05...2, display: String(format: "%.0f %%", item.aspect * 100))
+                }
+                sliderRow(label: "Gauche",
+                          value: Binding(get: { item.x }, set: { v in vm.updateSticker(id: id) { $0.x = v } }),
+                          range: 0...1, display: String(format: "%.0f %%", item.x * 100))
+                sliderRow(label: "Haut",
+                          value: Binding(get: { item.y }, set: { v in vm.updateSticker(id: id) { $0.y = v } }),
+                          range: 0...1, display: String(format: "%.0f %%", item.y * 100))
+                if item.kind == 0 {
+                    sliderRow(label: "Angle",
+                              value: Binding(get: { item.rotation ?? 0 }, set: { v in vm.updateSticker(id: id) { $0.rotation = abs(v) < 2 ? nil : v } }),
+                              range: -90...90, display: String(format: "%+.0f°", item.rotation ?? 0))
+                    sliderRow(label: "Opacité",
+                              value: Binding(get: { item.opacity ?? 1 }, set: { v in vm.updateSticker(id: id) { $0.opacity = v > 0.98 ? nil : v } }),
+                              range: 0.1...1, display: String(format: "%.0f %%", (item.opacity ?? 1) * 100))
+                }
+                HStack {
+                    Spacer()
+                    Button(role: .destructive) { vm.removeSticker(id: id) } label: { Image(systemName: "trash") }
                 }
             }
         }
