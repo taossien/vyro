@@ -15,6 +15,15 @@ struct ClipPlan {
     var stabilization: StabilizationData?
     var trimIn: Double = 0
     var trimOut: Double?
+    /// Transition à l'entrée de ce clip.
+    var transition: CutTransition?
+}
+
+/// Coupure à décorer d'une transition (temps du montage).
+struct CutMark {
+    let time: Double
+    let type: Int
+    let duration: Double
 }
 
 struct RenderPlan {
@@ -292,6 +301,13 @@ enum VideoPipeline {
             audioMix = mix
         }
 
+        var cuts: [CutMark] = []
+        for index in 1..<max(loaded.count, 1) where index < spans.count {
+            if let transition = loaded[index].plan.transition {
+                cuts.append(CutMark(time: spans[index].start, type: transition.type, duration: transition.duration))
+            }
+        }
+
         // Une instruction par clip, collées bout à bout.
         var instructions: [VYROInstruction] = []
         for (index, entry) in bounds.enumerated() {
@@ -311,7 +327,8 @@ enum VideoPipeline {
                 motionBlur: plan.motionBlur,
                 grade: plan.grade,
                 texts: plan.texts,
-                keyframes: plan.keyframes
+                keyframes: plan.keyframes,
+                cuts: cuts
             ))
         }
 

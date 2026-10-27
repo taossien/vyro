@@ -80,3 +80,7 @@ Limites connues : un seul clip par montage, effets positionnés en temps de mont
 ### Projets et export
 - Miniature et nombre de clips pour chaque projet sur l'accueil.
 - Bouton « Enregistrer dans Photos » à la fin de l'export (autorisation d'ajout à la photothèque), en plus du partage.
+
+### Transitions
+- Outil Transition : sur la coupure d'entrée d'un clip, au choix flash, zoom, glitch, flou, noir ou whip, avec une durée réglable (0,1 à 1 s).
+- Ce sont des effets de coupure (centrés sur la coupe, sans fondu enchaîné) : chaque image vient d'un seul clip, ce qui garde l'aperçu fluide.

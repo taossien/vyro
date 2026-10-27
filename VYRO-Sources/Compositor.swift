@@ -36,6 +36,7 @@ final class VYROInstruction: NSObject, AVVideoCompositionInstructionProtocol {
     let grade: ColorGrade?
     let texts: [TextOverlay]
     let keyframes: [Keyframe]
+    let cuts: [CutMark]
 
     init(timeRange: CMTimeRange,
          trackID: CMPersistentTrackID,
@@ -50,7 +51,8 @@ final class VYROInstruction: NSObject, AVVideoCompositionInstructionProtocol {
          motionBlur: Double,
          grade: ColorGrade? = nil,
          texts: [TextOverlay] = [],
-         keyframes: [Keyframe] = []) {
+         keyframes: [Keyframe] = [],
+         cuts: [CutMark] = []) {
         self.timeRange = timeRange
         self.trackID = trackID
         self.requiredSourceTrackIDs = [NSNumber(value: trackID)]
@@ -66,6 +68,7 @@ final class VYROInstruction: NSObject, AVVideoCompositionInstructionProtocol {
         self.grade = grade
         self.texts = texts
         self.keyframes = keyframes
+        self.cuts = cuts
         super.init()
     }
 }
@@ -125,6 +128,8 @@ enum FrameRenderer {
         var flash: Double
         var glow: Double
         var rotation: Double = 0
+        var blur: Double = 0
+        var dim: Double = 0
     }
 
     static func orientation(for t: CGAffineTransform) -> CGImagePropertyOrientation {
@@ -154,7 +159,29 @@ enum FrameRenderer {
             dy += key.y
             rotation = key.rotation
         }
-        return State(scale: scale, dx: dx, dy: dy, rgbSplit: fx.rgbSplit, flash: fx.flash, glow: fx.glow, rotation: rotation)
+        var rgb = fx.rgbSplit
+        var flash = fx.flash
+        var blur = 0.0
+        var dim = 0.0
+        for cut in instruction.cuts {
+            let half = max(cut.duration / 2, 0.02)
+            let d = time - cut.time
+            guard abs(d) < half else { continue }
+            let w = 1 - abs(d) / half
+            switch cut.type {
+            case 0: flash = min(1, flash + pow(w, 1.5))
+            case 1: scale *= 1 + 0.45 * w * w
+            case 2:
+                rgb += 0.025 * w
+                let r = sin(floor(time * 20) * 12.9898) * 43758.5453
+                dx += (r - floor(r) - 0.5) * 0.05 * w
+            case 3: blur = max(blur, w)
+            case 4: dim = max(dim, pow(w, 0.8))
+            default: dx += (d < 0 ? -1.0 : 1.0) * 0.6 * w * w
+            }
+        }
+        return State(scale: scale, dx: dx, dy: dy, rgbSplit: rgb, flash: flash, glow: fx.glow,
+                     rotation: rotation, blur: blur, dim: dim)
     }
 
     static func render(source: CIImage, time: Double, instruction: VYROInstruction) -> CIImage {
@@ -203,6 +230,12 @@ enum FrameRenderer {
             }
         }
 
+        if now.blur > 0.02 {
+            image = image.clampedToExtent()
+                .applyingFilter("CIGaussianBlur", parameters: [kCIInputRadiusKey: 28 * w / 1080 * now.blur])
+                .cropped(to: rect)
+        }
+
         if now.rgbSplit > 0.0005 {
             image = rgbSplit(image, offset: CGFloat(now.rgbSplit) * w, rect: rect)
         }
@@ -224,6 +257,12 @@ enum FrameRenderer {
             let white = CIImage(color: CIColor(red: 1, green: 1, blue: 1, alpha: CGFloat(min(now.flash, 1))))
                 .cropped(to: rect)
             image = white.composited(over: image)
+        }
+
+        if now.dim > 0.002 {
+            let black = CIImage(color: CIColor(red: 0, green: 0, blue: 0, alpha: CGFloat(min(now.dim, 1))))
+                .cropped(to: rect)
+            image = black.composited(over: image)
         }
 
         for overlay in instruction.texts where time >= overlay.start && time <= overlay.end {

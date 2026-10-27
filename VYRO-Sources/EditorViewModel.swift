@@ -133,7 +133,8 @@ final class EditorViewModel: ObservableObject {
                     speedPoints: (clip.speedPoints ?? []).sorted { $0.time < $1.time },
                     stabilization: clip.stabilizationEnabled == true ? stabilizationCache[clip.mediaFileName] : nil,
                     trimIn: clip.trimIn ?? 0,
-                    trimOut: clip.trimOut
+                    trimOut: clip.trimOut,
+                    transition: clip.transition
                 )
             },
             effects: effects,
@@ -521,6 +522,28 @@ final class EditorViewModel: ObservableObject {
         rebuildTask = Task { await rebuild() }
     }
 
+    var currentTransition: CutTransition? { currentClip?.transition }
+
+    func setTransition(type: Int?) {
+        guard currentIndex > 0 else { return }
+        mutateCurrent { clip in
+            if let type {
+                var value = clip.transition ?? CutTransition()
+                value.type = type
+                clip.transition = value
+            } else {
+                clip.transition = nil
+            }
+        }
+        scheduleRebuild()
+    }
+
+    func setTransitionDuration(_ value: Double) {
+        guard currentIndex > 0 else { return }
+        mutateCurrent { $0.transition?.duration = value }
+        scheduleRebuild()
+    }
+
     func selectClip(_ index: Int) {
         guard spans.indices.contains(index) else { return }
         seek(to: spans[index].start)
@@ -541,6 +564,7 @@ final class EditorViewModel: ObservableObject {
         right.id = UUID()
         stripGlobals(&right)
         right.trimIn = cut
+        right.transition = nil
         mutateAll { clips in
             clips[index].trimOut = cut
             clips.insert(right, at: index + 1)

@@ -14,7 +14,7 @@ struct EditorView: View {
     @StateObject private var vm: EditorViewModel
     @State private var panel: ToolPanel?
 
-    enum ToolPanel { case speed, stabilization, trim, music, render, look, text, motion }
+    enum ToolPanel { case speed, stabilization, trim, music, render, look, text, motion, transition }
     @State private var showMusicPicker = false
 
     init(project: ProjectModel? = nil) {
@@ -189,7 +189,8 @@ struct EditorView: View {
                     ForEach(Array(vm.spans.enumerated()), id: \.offset) { index, span in
                         let current = index == vm.currentIndex
                         Button { vm.selectClip(index) } label: {
-                            Text(String(index + 1) + " · " + String(format: "%.1f s", span.duration))
+                            Text((vm.clips.indices.contains(index) && index > 0 && vm.clips[index].transition != nil ? "⚡" : "")
+                                + String(index + 1) + " · " + String(format: "%.1f s", span.duration))
                                 .font(.caption.weight(.semibold))
                                 .padding(.horizontal, 10)
                                 .padding(.vertical, 6)
@@ -269,6 +270,10 @@ struct EditorView: View {
                 vm.selectedEffectID = nil
                 panel = panel == .stabilization ? nil : .stabilization
             }
+            toolButton("Transition", icon: "arrow.left.arrow.right", color: .orange, active: panel == .transition || vm.clips.contains { $0.transition != nil }) {
+                vm.selectedEffectID = nil
+                panel = panel == .transition ? nil : .transition
+            }
             toolButton("Mouvement", icon: "arrow.up.left.and.arrow.down.right", color: .cyan, active: panel == .motion || !vm.keyframes.isEmpty) {
                 vm.selectedEffectID = nil
                 panel = panel == .motion ? nil : .motion
@@ -327,6 +332,8 @@ struct EditorView: View {
             panelContainer(title: "Vitesse", icon: "speedometer") { speedPanel }
         } else if panel == .render {
             panelContainer(title: "Rendu", icon: "sparkles") { renderPanel }
+        } else if panel == .transition {
+            panelContainer(title: "Transition", icon: "arrow.left.arrow.right") { transitionPanel }
         } else if panel == .motion {
             panelContainer(title: "Mouvement", icon: "arrow.up.left.and.arrow.down.right") { motionPanel }
         } else if panel == .text {
@@ -582,6 +589,40 @@ struct EditorView: View {
             Text("Flou de mouvement : les zooms et secousses rapides deviennent fluides, comme avec l'obturateur d'une caméra. 1 correspond au rendu cinéma, 0 le désactive.")
                 .font(.caption)
                 .foregroundColor(Theme.textSecondary)
+        }
+    }
+
+    // MARK: Transitions entre clips
+
+    private var transitionPanel: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if vm.currentIndex == 0 {
+                Text(vm.clips.count > 1
+                     ? "Choisis un clip après le premier (barre des clips) : la transition se place à son entrée."
+                     : "Ajoute ou scinde un clip pour pouvoir placer une transition entre deux clips.")
+                    .font(.caption)
+                    .foregroundColor(Theme.textSecondary)
+            } else {
+                Text("Transition à l'entrée du clip " + String(vm.currentIndex + 1))
+                    .font(.caption)
+                    .foregroundColor(Theme.textSecondary)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        chip("Aucune", selected: vm.currentTransition == nil, tint: .orange) { vm.setTransition(type: nil) }
+                        ForEach(Array(CutTransition.names.enumerated()), id: \.offset) { index, name in
+                            chip(name, selected: vm.currentTransition?.type == index, tint: .orange) {
+                                haptic()
+                                vm.setTransition(type: index)
+                            }
+                        }
+                    }
+                }
+                if let transition = vm.currentTransition {
+                    sliderRow(label: "Durée",
+                              value: Binding(get: { transition.duration }, set: { vm.setTransitionDuration($0) }),
+                              range: 0.1...1.0, display: String(format: "%.2f s", transition.duration))
+                }
+            }
         }
     }
 

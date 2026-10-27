@@ -73,6 +73,17 @@ struct ClipModel: Codable, Identifiable, Equatable {
     var texts: [TextOverlay]?
     /// Images clés de mouvement (globales, temps du montage).
     var keyframes: [Keyframe]?
+    /// Transition à l'entrée de ce clip (ignorée pour le premier clip).
+    var transition: CutTransition?
+}
+
+/// Effet placé sur la coupure entre deux clips.
+struct CutTransition: Codable, Equatable {
+    /// 0 flash, 1 zoom, 2 glitch, 3 flou, 4 noir, 5 whip.
+    var type: Int = 0
+    var duration: Double = 0.3
+
+    static let names = ["Flash", "Zoom", "Glitch", "Flou", "Noir", "Whip"]
 }
 
 /// Un texte affiché pendant un moment du montage.
