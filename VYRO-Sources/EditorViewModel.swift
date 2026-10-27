@@ -142,8 +142,49 @@ final class EditorViewModel: ObservableObject {
             musicOffset: musicOffset,
             originalVolume: originalVolume,
             motionBlur: motionBlurStrength,
-            grade: colorGrade
+            grade: colorGrade,
+            texts: texts
         )
+    }
+
+    // MARK: - Textes
+
+    @Published var selectedTextID: UUID?
+    var texts: [TextOverlay] { project.tracks.first?.clips.first?.texts ?? [] }
+    var selectedText: TextOverlay? { texts.first { $0.id == selectedTextID } }
+
+    func addText() {
+        guard hasClip, duration > 0 else { return }
+        let start = min(max(snap(playhead), 0), max(duration - 0.5, 0))
+        let overlay = TextOverlay(id: UUID(), start: start, duration: min(2, max(duration - start, 0.5)))
+        mutateClip { $0.texts = ($0.texts ?? []) + [overlay] }
+        selectedTextID = overlay.id
+        scheduleRebuild()
+    }
+
+    func updateText(id: UUID, _ change: (inout TextOverlay) -> Void) {
+        mutateClip { clip in
+            guard var list = clip.texts, let index = list.firstIndex(where: { $0.id == id }) else { return }
+            change(&list[index])
+            list[index].duration = max(list[index].duration, 0.3)
+            list[index].start = max(list[index].start, 0)
+            clip.texts = list
+        }
+        scheduleRebuild()
+    }
+
+    func removeText(id: UUID) {
+        mutateClip { clip in
+            let list = (clip.texts ?? []).filter { $0.id != id }
+            clip.texts = list.isEmpty ? nil : list
+        }
+        if selectedTextID == id { selectedTextID = nil }
+        scheduleRebuild()
+    }
+
+    func selectText(id: UUID) {
+        selectedTextID = id
+        if let text = texts.first(where: { $0.id == id }) { seek(to: min(text.start + 0.05, max(duration - 0.05, 0))) }
     }
 
     var colorGrade: ColorGrade { project.tracks.first?.clips.first?.colorGrade ?? .neutral }
@@ -401,6 +442,7 @@ final class EditorViewModel: ObservableObject {
         clip.musicOffset = nil
         clip.motionBlur = nil
         clip.colorGrade = nil
+        clip.texts = nil
     }
 
     /// Réordonne / retire des clips en gardant les réglages globaux sur le premier.
@@ -417,6 +459,7 @@ final class EditorViewModel: ObservableObject {
             clips[0].musicOffset = globals.musicOffset
             clips[0].motionBlur = globals.motionBlur
             clips[0].colorGrade = globals.colorGrade
+            clips[0].texts = globals.texts
         }
     }
 

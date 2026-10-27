@@ -13,7 +13,7 @@ struct EditorView: View {
     @StateObject private var vm: EditorViewModel
     @State private var panel: ToolPanel?
 
-    enum ToolPanel { case speed, stabilization, trim, music, render, look }
+    enum ToolPanel { case speed, stabilization, trim, music, render, look, text }
     @State private var showMusicPicker = false
 
     init(project: ProjectModel? = nil) {
@@ -260,6 +260,11 @@ struct EditorView: View {
                 vm.selectedEffectID = nil
                 panel = panel == .stabilization ? nil : .stabilization
             }
+            toolButton("Texte", icon: "textformat", color: .white, active: panel == .text || !vm.texts.isEmpty) {
+                vm.selectedEffectID = nil
+                panel = panel == .text ? nil : .text
+                if panel == .text, vm.texts.isEmpty { vm.addText() }
+            }
             toolButton("Look", icon: "camera.filters", color: .purple, active: panel == .look || !vm.colorGrade.isNeutral) {
                 vm.selectedEffectID = nil
                 panel = panel == .look ? nil : .look
@@ -309,6 +314,8 @@ struct EditorView: View {
             panelContainer(title: "Vitesse", icon: "speedometer") { speedPanel }
         } else if panel == .render {
             panelContainer(title: "Rendu", icon: "sparkles") { renderPanel }
+        } else if panel == .text {
+            panelContainer(title: "Texte", icon: "textformat") { textPanel }
         } else if panel == .look {
             panelContainer(title: "Look", icon: "camera.filters") { lookPanel }
         } else if panel == .music {
@@ -560,6 +567,74 @@ struct EditorView: View {
             Text("Flou de mouvement : les zooms et secousses rapides deviennent fluides, comme avec l'obturateur d'une caméra. 1 correspond au rendu cinéma, 0 le désactive.")
                 .font(.caption)
                 .foregroundColor(Theme.textSecondary)
+        }
+    }
+
+    // MARK: Texte et sous-titres
+
+    private func chip(_ title: String, selected: Bool, tint: Color = .white, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 7)
+                .background(Capsule().fill(selected ? tint.opacity(0.9) : Color.white.opacity(0.08)))
+                .foregroundColor(selected ? .black : Theme.textSecondary)
+        }
+    }
+
+    private var textPanel: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(Array(vm.texts.enumerated()), id: \.element.id) { index, item in
+                        chip("T" + String(index + 1), selected: item.id == vm.selectedTextID) { vm.selectText(id: item.id) }
+                    }
+                    chip("+ Ajouter", selected: false) { vm.addText() }
+                }
+            }
+            if let item = vm.selectedText {
+                let id = item.id
+                TextField("Ton texte", text: Binding(
+                    get: { vm.selectedText?.text ?? "" },
+                    set: { value in vm.updateText(id: id) { $0.text = value } }
+                ))
+                .textFieldStyle(.roundedBorder)
+                sliderRow(label: "Début",
+                          value: Binding(get: { item.start }, set: { v in vm.updateText(id: id) { $0.start = v } }),
+                          range: 0...max(vm.duration - 0.3, 0.5), display: String(format: "%.1f s", item.start))
+                sliderRow(label: "Durée",
+                          value: Binding(get: { item.duration }, set: { v in vm.updateText(id: id) { $0.duration = v } }),
+                          range: 0.3...max(min(vm.duration, 10), 1), display: String(format: "%.1f s", item.duration))
+                sliderRow(label: "Taille",
+                          value: Binding(get: { item.size }, set: { v in vm.updateText(id: id) { $0.size = v } }),
+                          range: 0.04...0.2, display: String(format: "%.0f %%", item.size * 500))
+                sliderRow(label: "Hauteur",
+                          value: Binding(get: { 1 - item.y }, set: { v in vm.updateText(id: id) { $0.y = 1 - v } }),
+                          range: 0.05...0.95, display: String(format: "%.0f %%", (1 - item.y) * 100))
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(Array(TextOverlay.styleNames.enumerated()), id: \.offset) { index, name in
+                            chip(name, selected: item.style == index) { vm.updateText(id: id) { $0.style = index } }
+                        }
+                        ForEach(Array(TextOverlay.animationNames.enumerated()), id: \.offset) { index, name in
+                            chip(name, selected: item.animation == index, tint: .yellow) { vm.updateText(id: id) { $0.animation = index } }
+                        }
+                    }
+                }
+                HStack(spacing: 10) {
+                    ForEach(Array(TextOverlay.palette.enumerated()), id: \.offset) { index, entry in
+                        Button { vm.updateText(id: id) { $0.colorIndex = index } } label: {
+                            Circle()
+                                .fill(Color(red: entry.r, green: entry.g, blue: entry.b))
+                                .frame(width: 28, height: 28)
+                                .overlay(Circle().stroke(Color.white, lineWidth: item.colorIndex == index ? 3 : 0))
+                        }
+                    }
+                    Spacer()
+                    Button(role: .destructive) { vm.removeText(id: id) } label: { Image(systemName: "trash") }
+                }
+            }
         }
     }
 

@@ -67,3 +67,8 @@ Limites connues : un seul clip par montage, effets positionnés en temps de mont
 - Vitesse, découpe et stabilisation propres à chaque clip ; effets, musique et flou de mouvement globaux sur tout le montage.
 - Les clips de format différent remplissent le format du premier clip (cadrage centré).
 - Limites connues : pas encore de transitions entre clips ; à valider sur un vrai iPhone (vidéos verticales, performances).
+
+### Texte et sous-titres
+- Outil Texte : plusieurs textes, début et durée, taille, hauteur, 4 styles (simple, contour, fond, néon), 6 couleurs, animation (pop, fondu).
+- Outil Look : étalonnage (presets Néon, Cinéma, Sombre, Vif, Rétro + réglages).
+- Limites connues : pas encore de glisser-déposer des textes sur la timeline ni de police au choix.

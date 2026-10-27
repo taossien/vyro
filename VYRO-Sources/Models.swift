@@ -69,6 +69,33 @@ struct ClipModel: Codable, Identifiable, Equatable {
     var motionBlur: Double?
     /// Étalonnage global (nil = image d'origine).
     var colorGrade: ColorGrade?
+    /// Textes et sous-titres (globaux, temps du montage).
+    var texts: [TextOverlay]?
+}
+
+/// Un texte affiché pendant un moment du montage.
+struct TextOverlay: Codable, Identifiable, Equatable {
+    var id: UUID
+    var text: String = "TEXTE"
+    var start: Double
+    var duration: Double = 2
+    /// Position verticale du centre (0 = haut, 1 = bas) et taille (fraction de la largeur).
+    var y: Double = 0.78
+    var size: Double = 0.09
+    var colorIndex: Int = 0
+    /// 0 simple, 1 contour, 2 fond, 3 néon.
+    var style: Int = 1
+    /// 0 aucune, 1 pop, 2 fondu.
+    var animation: Int = 1
+
+    var end: Double { start + duration }
+
+    static let palette: [(name: String, r: Double, g: Double, b: Double)] = [
+        ("Blanc", 1, 1, 1), ("Jaune", 1, 0.92, 0.2), ("Cyan", 0.2, 0.9, 1),
+        ("Rose", 1, 0.3, 0.7), ("Menthe", 0.3, 1, 0.7), ("Orange", 1, 0.55, 0.15)
+    ]
+    static let styleNames = ["Simple", "Contour", "Fond", "Néon"]
+    static let animationNames = ["Aucune", "Pop", "Fondu"]
 }
 
 /// Étalonnage couleur : réglages simples, inspirés des looks des créateurs.

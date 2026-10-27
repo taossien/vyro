@@ -9,6 +9,7 @@ import Foundation
 import AVFoundation
 import CoreImage
 import CoreVideo
+import UIKit
 
 // MARK: - Instruction : tout ce qu'il faut pour dessiner n'importe quelle image du montage
 
@@ -33,6 +34,7 @@ final class VYROInstruction: NSObject, AVVideoCompositionInstructionProtocol {
     /// 0 = pas de flou de mouvement, 1 = obturateur 180° (rendu cinéma), 2 = très marqué.
     let motionBlur: Double
     let grade: ColorGrade?
+    let texts: [TextOverlay]
 
     init(timeRange: CMTimeRange,
          trackID: CMPersistentTrackID,
@@ -45,7 +47,8 @@ final class VYROInstruction: NSObject, AVVideoCompositionInstructionProtocol {
          stabilization: StabilizationData?,
          timeMap: TimeMap,
          motionBlur: Double,
-         grade: ColorGrade? = nil) {
+         grade: ColorGrade? = nil,
+         texts: [TextOverlay] = []) {
         self.timeRange = timeRange
         self.trackID = trackID
         self.requiredSourceTrackIDs = [NSNumber(value: trackID)]
@@ -59,6 +62,7 @@ final class VYROInstruction: NSObject, AVVideoCompositionInstructionProtocol {
         self.timeMap = timeMap
         self.motionBlur = motionBlur
         self.grade = grade
+        self.texts = texts
         super.init()
     }
 }
@@ -211,6 +215,35 @@ enum FrameRenderer {
             image = white.composited(over: image)
         }
 
+        for overlay in instruction.texts where time >= overlay.start && time <= overlay.end {
+            guard let label = TextRenderer.image(for: overlay, canvasWidth: w) else { continue }
+            let u = time - overlay.start
+            var scale = 1.0
+            var alpha = 1.0
+            switch overlay.animation {
+            case 1:
+                let k = min(u / 0.2, 1)
+                scale = 0.6 + 0.4 * (1 - pow(1 - k, 3))
+                alpha = min(u / 0.08, 1)
+            case 2:
+                alpha = min(u / 0.2, 1)
+            default: break
+            }
+            let remaining = overlay.end - time
+            if remaining < 0.15 { alpha *= max(remaining / 0.15, 0) }
+            let extent = label.extent
+            var t = CGAffineTransform(translationX: -extent.width / 2, y: -extent.height / 2)
+            t = t.concatenating(CGAffineTransform(scaleX: scale, y: scale))
+            t = t.concatenating(CGAffineTransform(translationX: w / 2, y: h * (1 - overlay.y)))
+            var placed = label.transformed(by: t)
+            if alpha < 0.999 {
+                placed = placed.applyingFilter("CIColorMatrix", parameters: [
+                    "inputAVector": CIVector(x: 0, y: 0, z: 0, w: CGFloat(alpha))
+                ])
+            }
+            image = placed.composited(over: image).cropped(to: rect)
+        }
+
         let finalSize = instruction.finalSize
         if abs(finalSize.width - w) > 0.5 || abs(finalSize.height - h) > 0.5 {
             image = image.transformed(by: CGAffineTransform(scaleX: finalSize.width / w, y: finalSize.height / h))
@@ -275,5 +308,71 @@ enum FrameRenderer {
         return blue.cropped(to: rect).applyingFilter("CILightenBlendMode", parameters: [
             kCIInputBackgroundImageKey: rg
         ]).cropped(to: rect)
+    }
+}
+
+// MARK: - Texte
+
+/// Dessine un texte (UIKit) en image Core Image, mise en cache pour ne pas le redessiner à chaque image.
+enum TextRenderer {
+    private static var cache: [String: CIImage] = [:]
+    private static let lock = NSLock()
+
+    static func image(for overlay: TextOverlay, canvasWidth: CGFloat) -> CIImage? {
+        guard !overlay.text.isEmpty else { return nil }
+        let key = [overlay.text, String(overlay.size), String(overlay.style),
+                   String(overlay.colorIndex), String(Int(canvasWidth))].joined(separator: "|")
+        lock.lock()
+        if let hit = cache[key] { lock.unlock(); return hit }
+        lock.unlock()
+
+        let entry = TextOverlay.palette[min(max(overlay.colorIndex, 0), TextOverlay.palette.count - 1)]
+        let color = UIColor(red: entry.r, green: entry.g, blue: entry.b, alpha: 1)
+        let fontSize = max(canvasWidth * overlay.size, 8)
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = .center
+        var attributes: [NSAttributedString.Key: Any] = [
+            .font: UIFont.systemFont(ofSize: fontSize, weight: .heavy),
+            .foregroundColor: color,
+            .paragraphStyle: paragraph
+        ]
+        switch overlay.style {
+        case 1:
+            attributes[.strokeColor] = UIColor.black
+            attributes[.strokeWidth] = -7
+        case 3:
+            let shadow = NSShadow()
+            shadow.shadowColor = color
+            shadow.shadowBlurRadius = fontSize * 0.3
+            shadow.shadowOffset = .zero
+            attributes[.shadow] = shadow
+        default: break
+        }
+        let string = NSAttributedString(string: overlay.text, attributes: attributes)
+        let options: NSStringDrawingOptions = [.usesLineFragmentOrigin, .usesFontLeading]
+        let box = string.boundingRect(
+            with: CGSize(width: canvasWidth * 0.9, height: .greatestFiniteMagnitude),
+            options: options, context: nil
+        )
+        let pad = fontSize * 0.4
+        let size = CGSize(width: ceil(box.width) + pad * 2, height: ceil(box.height) + pad * 2)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = false
+        let rendered = UIGraphicsImageRenderer(size: size, format: format).image { _ in
+            if overlay.style == 2 {
+                UIColor.black.withAlphaComponent(0.6).setFill()
+                UIBezierPath(roundedRect: CGRect(origin: .zero, size: size), cornerRadius: fontSize * 0.3).fill()
+            }
+            string.draw(with: CGRect(x: pad, y: pad, width: ceil(box.width) + 1, height: ceil(box.height) + 1),
+                        options: options, context: nil)
+        }
+        guard let cg = rendered.cgImage else { return nil }
+        let result = CIImage(cgImage: cg)
+        lock.lock()
+        if cache.count > 40 { cache.removeAll() }
+        cache[key] = result
+        lock.unlock()
+        return result
     }
 }
