@@ -118,3 +118,8 @@ Flash, Zoom, Glitch, Flou, Noir, Whip, puis Spin, Glissé, Strobe, Flash zoom, T
 - **Musique** : elle baisse automatiquement (45 %) pendant les sous-titres, donc la voix passe au premier plan.
 - **Styles partageables** (`StyleTemplate.swift`) : « Partager mon style » exporte effets, sons, look, flou et transition dans un fichier JSON ; « Importer un style » l'applique à un autre montage en étirant les temps à sa durée.
 - **Accueil** (`OnboardingView.swift`) : trois pages au premier lancement (clé `vyro.onboarded`).
+
+## Icône et volume des clips
+
+- **Icône** : `Assets.xcassets/AppIcon.appiconset/AppIcon.png` (V néon avec étincelle), branchée via `ASSETCATALOG_COMPILER_APPICON_NAME`.
+- **Égalisation du son d'origine** : avec plusieurs clips, le niveau RMS de chacun est mesuré (20 premières secondes) et ramené vers la médiane (gain borné 0,6 à 1,6). Automatique ; non écouté sur appareil.

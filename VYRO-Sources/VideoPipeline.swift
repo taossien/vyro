@@ -56,6 +56,8 @@ struct RenderPlan {
     var sounds: [SoundPlan] = []
     /// La musique baisse quand des sous-titres (donc une voix) sont affichés.
     var duckMusic = true
+    /// Égalise le volume du son d'origine entre les clips (un clip trop faible ou trop fort).
+    var normalizeAudio = true
 
     /// Faux si le plan ne modifie pas les images (aucun effet actif, pas de stabilisation, un seul clip).
     var needsRendering: Bool {
@@ -288,6 +290,18 @@ enum VideoPipeline {
         if let audio {
             let parameters = AVMutableAudioMixInputParameters(track: audio)
             parameters.setVolume(Float(plan.originalVolume), at: .zero)
+            if plan.normalizeAudio, bounds.count > 1 {
+                var levels: [Double?] = []
+                for entry in bounds { levels.append(await loudness(of: entry.item.plan.url)) }
+                let known = levels.compactMap { $0 }.sorted()
+                if known.count > 1 {
+                    let target = known[known.count / 2]
+                    for (index, entry) in bounds.enumerated() {
+                        let gain = levels[index].map { min(max(target / max($0, 0.0005), 0.6), 1.6) } ?? 1
+                        parameters.setVolume(Float(plan.originalVolume * gain), at: entry.start)
+                    }
+                }
+            }
             mixParameters.append(parameters)
         }
         if let musicURL = plan.musicURL {
@@ -433,6 +447,57 @@ enum VideoPipeline {
     }
 
     // MARK: Export
+
+    private static var loudnessCache: [URL: Double] = [:]
+    private static let loudnessLock = NSLock()
+
+    /// Niveau moyen (RMS) du son d'un fichier, mesuré sur ses 20 premières secondes. nil sans son.
+    static func loudness(of url: URL) async -> Double? {
+        if let hit = cachedLoudness(url) { return hit }
+        let asset = AVURLAsset(url: url)
+        guard let track = try? await asset.loadTracks(withMediaType: .audio).first,
+              let reader = try? AVAssetReader(asset: asset) else { return nil }
+        reader.timeRange = CMTimeRange(start: .zero, duration: CMTime(seconds: 20, preferredTimescale: 600))
+        let output = AVAssetReaderTrackOutput(track: track, outputSettings: [
+            AVFormatIDKey: kAudioFormatLinearPCM,
+            AVLinearPCMBitDepthKey: 16,
+            AVLinearPCMIsFloatKey: false,
+            AVLinearPCMIsBigEndianKey: false,
+            AVNumberOfChannelsKey: 1
+        ])
+        guard reader.canAdd(output) else { return nil }
+        reader.add(output)
+        guard reader.startReading() else { return nil }
+        var sum = 0.0
+        var count = 0.0
+        while let buffer = output.copyNextSampleBuffer(), let block = CMSampleBufferGetDataBuffer(buffer) {
+            let length = CMBlockBufferGetDataLength(block)
+            var data = [Int16](repeating: 0, count: length / 2)
+            CMBlockBufferCopyDataBytes(block, atOffset: 0, dataLength: length, destination: &data)
+            for value in data {
+                let v = Double(value) / 32768
+                sum += v * v
+            }
+            count += Double(data.count)
+        }
+        guard count > 4800 else { return nil }
+        let rms = (sum / count).squareRoot()
+        guard rms > 0.0005 else { return nil }
+        storeLoudness(rms, for: url)
+        return rms
+    }
+
+    private static func cachedLoudness(_ url: URL) -> Double? {
+        loudnessLock.lock()
+        defer { loudnessLock.unlock() }
+        return loudnessCache[url]
+    }
+
+    private static func storeLoudness(_ value: Double, for url: URL) {
+        loudnessLock.lock()
+        loudnessCache[url] = value
+        loudnessLock.unlock()
+    }
 
     private static func naturalLongSide(url: URL) async throws -> Double {
         let asset = AVURLAsset(url: url)
