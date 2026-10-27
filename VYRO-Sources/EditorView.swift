@@ -220,6 +220,10 @@ struct EditorView: View {
             Group {
                 Button { haptic(); vm.splitAtPlayhead() } label: { Image(systemName: "scissors") }
                     .accessibilityLabel("Scinder le clip ici")
+                Button { haptic(); vm.freezeAtPlayhead() } label: { Image(systemName: "pause.rectangle") }
+                    .accessibilityLabel("Figer l'image ici")
+                Button { haptic(); vm.replayAtPlayhead() } label: { Image(systemName: "gobackward") }
+                    .accessibilityLabel("Rejouer au ralenti")
                 Button { vm.moveCurrentClip(by: -1) } label: { Image(systemName: "arrow.left") }
                     .disabled(vm.currentIndex == 0)
                     .accessibilityLabel("Déplacer le clip vers la gauche")
@@ -283,6 +287,21 @@ struct EditorView: View {
                 haptic()
                 panel = nil
                 vm.addGlow()
+            }
+            toolButton("Étincelles", icon: "sparkles", color: .cyan, active: vm.selectedEffect?.type == .sparkles) {
+                haptic()
+                panel = nil
+                vm.addSparkles()
+            }
+            toolButton("Anneau", icon: "circle.dashed", color: .mint, active: vm.selectedEffect?.type == .ring) {
+                haptic()
+                panel = nil
+                vm.addRing()
+            }
+            toolButton("Aberration", icon: "circle.lefthalf.filled.righthalf.striped.horizontal", color: .red, active: vm.selectedEffect?.type == .chroma) {
+                haptic()
+                panel = nil
+                vm.addChroma()
             }
             }
             toolButton("Couper", icon: "scissors", color: .orange, active: panel == .trim || vm.isTrimmed) {
@@ -567,6 +586,37 @@ struct EditorView: View {
                     value: binding(id, get: { $0.intensity }, set: { $0.intensity = $1 }),
                     range: 0.2...2.0,
                     display: String(format: "%.0f %%", effect.intensity * 100)
+                )
+            } else if effect.type == .sparkles || effect.type == .ring {
+                sliderRow(
+                    label: effect.type == .ring ? "Éclat" : "Quantité",
+                    value: binding(id, get: { $0.intensity }, set: { $0.intensity = $1 }),
+                    range: 0.3...2.5,
+                    display: String(format: "%.0f %%", effect.intensity * 100)
+                )
+                if effect.type == .ring {
+                    sliderRow(
+                        label: "Pente",
+                        value: binding(id, get: { $0.tilt }, set: { $0.tilt = $1 }),
+                        range: 0.1...1,
+                        display: String(format: "%.0f %%", effect.tilt * 100)
+                    )
+                }
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(Array(TextOverlay.palette.enumerated()), id: \.offset) { index, entry in
+                            chip(entry.name, selected: effect.colorIndex == index, tint: .cyan) {
+                                vm.updateEffect(id: id) { $0.colorIndex = index }
+                            }
+                        }
+                    }
+                }
+            } else if effect.type == .chroma {
+                sliderRow(
+                    label: "Écart",
+                    value: binding(id, get: { $0.intensity }, set: { $0.intensity = $1 }),
+                    range: 0.003...0.04,
+                    display: String(format: "%.1f %%", effect.intensity * 100)
                 )
             } else if effect.type == .flash {
                 sliderRow(
@@ -1147,13 +1197,13 @@ struct EditorTimeline: View {
                         effectLane([.zoom], color: Theme.accent, icon: "plus.magnifyingglass", width: width, total: total)
                         effectLane([.shake], color: Theme.accentBlue, icon: "waveform.path", width: width, total: total)
                         effectLane([.glitch], color: .pink, icon: "square.stack.3d.down.right", width: width, total: total)
-                        effectLane([.flash, .glow], color: Color(white: 0.85), icon: "bolt.fill", width: width, total: total)
+                        effectLane([.flash, .glow, .sparkles, .ring, .chroma], color: Color(white: 0.85), icon: "bolt.fill", width: width, total: total)
                         speedLane(width: width, total: total)
                         textLane(width: width, total: total)
                         keyframeLane(width: width, total: total)
                         soundLane(width: width, total: total)
                     } else {
-                        effectLane([.zoom, .shake, .glitch, .flash, .glow], color: Theme.accent, icon: "burst.fill", width: width, total: total)
+                        effectLane([.zoom, .shake, .glitch, .flash, .glow, .sparkles, .ring, .chroma], color: Theme.accent, icon: "burst.fill", width: width, total: total)
                         speedLane(width: width, total: total)
                         textLane(width: width, total: total)
                         soundLane(width: width, total: total)

@@ -265,6 +265,10 @@ enum FrameRenderer {
             image = black.composited(over: image)
         }
 
+        if let overlays = OverlayRenderer.image(effects: instruction.effects, time: time, canvas: size) {
+            image = overlays.composited(over: image).cropped(to: rect)
+        }
+
         for overlay in instruction.texts where time >= overlay.start && time <= overlay.end {
             guard let label = TextRenderer.image(for: overlay, canvasWidth: w) else { continue }
             let u = time - overlay.start

@@ -134,7 +134,8 @@ final class EditorViewModel: ObservableObject {
                     stabilization: clip.stabilizationEnabled == true ? stabilizationCache[clip.mediaFileName] : nil,
                     trimIn: clip.trimIn ?? 0,
                     trimOut: clip.trimOut,
-                    transition: clip.transition
+                    transition: clip.transition,
+                    hold: clip.hold
                 )
             },
             effects: effects,
@@ -763,7 +764,7 @@ final class EditorViewModel: ObservableObject {
 
     /// Coupe le clip sous la tête de lecture en deux.
     func splitAtPlayhead() {
-        guard hasClip, let clip = currentClip, spans.indices.contains(currentIndex) else { return }
+        guard hasClip, let clip = currentClip, spans.indices.contains(currentIndex), clip.hold == nil else { return }
         let index = currentIndex
         let cut = playheadSourceTime
         let low = (clip.trimIn ?? 0) + 0.2
@@ -780,6 +781,85 @@ final class EditorViewModel: ObservableObject {
         mutateAll { clips in
             clips[index].trimOut = cut
             clips.insert(right, at: index + 1)
+        }
+        rebuildNow()
+    }
+
+    // MARK: - Image figée et rediffusion
+
+    /// Décale ce qui se trouve après `time` de `delta` secondes (un clip vient d'être inséré).
+    private func shiftGlobals(_ clip: inout ClipModel, after time: Double, by delta: Double) {
+        for i in clip.effects.indices where clip.effects[i].start >= time - 0.001 { clip.effects[i].start += delta }
+        if var texts = clip.texts {
+            for i in texts.indices {
+                if texts[i].start >= time - 0.001 { texts[i].start += delta }
+                else if texts[i].start + texts[i].duration > time { texts[i].duration += delta }
+            }
+            clip.texts = texts
+        }
+        if var frames = clip.keyframes {
+            for i in frames.indices where frames[i].time >= time - 0.001 { frames[i].time += delta }
+            clip.keyframes = frames
+        }
+        if var marks = clip.sounds {
+            for i in marks.indices where marks[i].time >= time - 0.001 { marks[i].time += delta }
+            clip.sounds = marks
+        }
+    }
+
+    /// Fige l'image sous la tête de lecture (clip du milieu) ; la suite est décalée.
+    func freezeAtPlayhead(hold: Double = 0.8) {
+        insertAtPlayhead(rewind: 0, hold: hold)
+    }
+
+    /// Rejoue la fin du plan au ralenti, avec un flash et un petit zoom.
+    func replayAtPlayhead() {
+        insertAtPlayhead(rewind: 0.5, hold: nil)
+    }
+
+    private func insertAtPlayhead(rewind: Double, hold: Double?) {
+        guard hasClip, let clip = currentClip, spans.indices.contains(currentIndex) else { return }
+        guard clip.hold == nil else { errorMessage = "Place la tête de lecture sur un clip normal."; return }
+        let index = currentIndex
+        let cut = playheadSourceTime
+        let time = playhead
+        let low = (clip.trimIn ?? 0) + max(rewind, 0.2)
+        let high = (clip.trimOut ?? clip.sourceOut) - 0.2
+        guard cut > low, cut < high else {
+            errorMessage = "Place la tête de lecture à l'intérieur du clip, à plus de 0,2 s des bords."
+            return
+        }
+        var middle = clip
+        middle.id = UUID()
+        stripGlobals(&middle)
+        var right = middle
+        right.id = UUID()
+        right.trimIn = cut
+        right.transition = nil
+        let delta: Double
+        if let hold {
+            middle.trimIn = cut
+            middle.trimOut = cut + 0.02
+            middle.hold = hold
+            middle.transition = nil
+            delta = hold
+        } else {
+            middle.trimIn = cut - rewind
+            middle.trimOut = cut
+            middle.speed = 0.5
+            middle.speedPoints = nil
+            middle.transition = CutTransition(type: 0, duration: 0.15)
+            delta = rewind / 0.5
+        }
+        mutateAll { clips in
+            clips[index].trimOut = cut
+            clips.insert(middle, at: index + 1)
+            clips.insert(right, at: index + 2)
+            shiftGlobals(&clips[0], after: time, by: delta)
+            if hold == nil {
+                clips[0].effects.append(.zoom(start: time, duration: delta, peak: 1.12))
+                clips[0].sounds = (clips[0].sounds ?? []) + [SoundMark(id: UUID(), time: time + 0.05, kind: SoundKind.whoosh.rawValue)]
+            }
         }
         rebuildNow()
     }
@@ -932,6 +1012,18 @@ final class EditorViewModel: ObservableObject {
 
     func addGlow() {
         addEffect(.glow(start: playhead))
+    }
+
+    func addSparkles() {
+        addEffect(.sparkles(start: playhead))
+    }
+
+    func addRing() {
+        addEffect(.ring(start: playhead))
+    }
+
+    func addChroma() {
+        addEffect(.chroma(start: playhead))
     }
 
     func addGlitch() {

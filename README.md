@@ -90,3 +90,10 @@ Limites connues : un seul clip par montage, effets positionnés en temps de mont
 - Les mots horodatés sont regroupés en sous-titres courts (4 mots au plus), chacun étant un texte modifiable de la piste Texte. Style, police et couleur réglables pour tous d'un coup.
 - Import d'une vidéo depuis Fichiers (en plus de la photothèque).
 - Limites connues : la qualité dépend de la netteté de la voix (la musique forte couvre la parole) ; pas encore de mise en avant du mot prononcé.
+
+## Étincelles, anneau, aberration, image figée, rediffusion
+
+- **Étincelles / Anneau** (`Overlays.swift`) : effets dessinés en superposition, avant les textes. **Aberration** : séparation RVB à l'impact.
+- **Figer l'image** (bouton pause dans la barre des clips) : insère un clip « hold » de 0,8 s sur l'image sous la tête de lecture ; tout ce qui suit (effets, textes, images clés, sons) est décalé.
+- **Rejouer au ralenti** (bouton flèche circulaire) : rejoue les 0,5 s précédentes à 50 %, avec flash, petit zoom et whoosh.
+- Limite : tête de lecture à plus de 0,5 s du début du clip pour la rediffusion. Non testé sur iPhone.

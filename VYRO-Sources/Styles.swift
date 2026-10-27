@@ -30,6 +30,7 @@ struct StylePreset: Identifiable {
                 var list = [EffectModel.zoom(start: time, duration: min(0.3, room), peak: 1.25)]
                 list.append(.glow(start: time, duration: min(0.4, room), strength: 0.5))
                 if index % 3 == 2 { list.append(.glitch(start: time, duration: min(0.25, room), amount: 0.05)) }
+                if index % 2 == 0 { list.append(.ring(start: time, duration: min(0.6, room), strength: 0.8)) }
                 return list
             }),
         StylePreset(
@@ -61,7 +62,8 @@ struct StylePreset: Identifiable {
             effects: { time, _, room in
                 var zoom = EffectModel.zoom(start: time, duration: min(0.35, room), peak: 1.3)
                 zoom.curve = 2
-                return [zoom, .glitch(start: time + 0.1, duration: min(0.2, room), amount: 0.035)]
+                return [zoom, .chroma(start: time, duration: min(0.45, room), amount: 0.014),
+                        .glitch(start: time + 0.1, duration: min(0.2, room), amount: 0.035)]
             }),
         StylePreset(
             id: "lueur", name: "Lueur", icon: "sun.max.fill",
@@ -70,6 +72,8 @@ struct StylePreset: Identifiable {
             transition: CutTransition(type: 0, duration: 0.25), beatEvery: 2, sound: .whoosh,
             effects: { time, index, room in
                 var list = [EffectModel.glow(start: time, duration: min(0.6, room), strength: 0.8)]
+                list.append(.sparkles(start: time, duration: min(0.9, room), amount: 1))
+                if index % 2 == 1 { list.append(.ring(start: time, duration: min(0.7, room), strength: 1)) }
                 if index % 2 == 0 { list.append(.flash(start: time, duration: min(0.1, room), strength: 0.2)) }
                 list.append(.zoom(start: time, duration: min(0.4, room), peak: 1.12))
                 return list

@@ -25,7 +25,7 @@ struct KeyframeModel: Codable, Identifiable, Equatable {
 
 struct EffectModel: Codable, Identifiable, Equatable {
     enum EffectType: String, Codable {
-        case zoom, shake, flash, glitch, speed, glow
+        case zoom, shake, flash, glitch, speed, glow, sparkles, ring, chroma
     }
 
     var id: UUID
@@ -75,6 +75,8 @@ struct ClipModel: Codable, Identifiable, Equatable {
     var keyframes: [Keyframe]?
     /// Effets sonores posés sur le montage (globaux, temps du montage).
     var sounds: [SoundMark]?
+    /// Image figée : durée (s) pendant laquelle l'image au point d'entrée (trimIn) est tenue.
+    var hold: Double?
     /// Transition à l'entrée de ce clip (ignorée pour le premier clip).
     var transition: CutTransition?
 }

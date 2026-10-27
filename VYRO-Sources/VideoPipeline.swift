@@ -17,6 +17,8 @@ struct ClipPlan {
     var trimOut: Double?
     /// Transition à l'entrée de ce clip.
     var transition: CutTransition?
+    /// Image figée : durée tenue (s). Remplace vitesse et découpe.
+    var hold: Double?
 }
 
 /// Coupure à décorer d'une transition (temps du montage).
@@ -178,7 +180,14 @@ enum VideoPipeline {
         let frameRate = loaded.map(\.frameRate).max() ?? 30
 
         func timeMap(for item: Loaded) -> TimeMap {
-            TimeMap.make(
+            if let hold = item.plan.hold {
+                let start = min(max(item.plan.trimIn, 0), max(item.duration.seconds - 0.02, 0))
+                let length = min(0.01, max(item.duration.seconds - start, 0.005))
+                let seconds = max(hold, 0.1)
+                return TimeMap(slices: [TimeMap.Slice(sourceStart: start, sourceEnd: start + length,
+                                                      outputStart: 0, outputEnd: seconds, speed: length / seconds)])
+            }
+            return TimeMap.make(
                 sourceDuration: item.duration.seconds,
                 base: item.plan.speed,
                 points: item.plan.speedPoints,
@@ -194,7 +203,7 @@ enum VideoPipeline {
         if loaded.count == 1 {
             let item = loaded[0]
             let map = timeMap(for: item)
-            let isPlain = item.plan.speedPoints.isEmpty && abs(item.plan.speed - 1) < 0.001 && !isTrimmed(item)
+            let isPlain = item.plan.hold == nil && item.plan.speedPoints.isEmpty && abs(item.plan.speed - 1) < 0.001 && !isTrimmed(item)
                 && plan.musicURL == nil && plan.sounds.isEmpty && abs(plan.originalVolume - 1) < 0.01
             if isPlain {
                 var videoComposition: AVMutableVideoComposition?
@@ -254,7 +263,7 @@ enum VideoPipeline {
                 guard range.duration > .zero else { continue }
 
                 try track.insertTimeRange(range, of: item.video, at: cursor)
-                if let source = item.audio, let audio {
+                if item.plan.hold == nil, let source = item.audio, let audio {
                     try? audio.insertTimeRange(range, of: source, at: cursor)
                 }
                 let target = CMTimeMultiplyByFloat64(range.duration, multiplier: 1.0 / slice.speed)

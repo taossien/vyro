@@ -57,6 +57,46 @@ extension EffectModel {
         )
     }
 
+    /// Pluie d'étincelles : intensité = quantité (1 = 36 étincelles).
+    static func sparkles(start: Double, duration: Double = 0.9, amount: Double = 1) -> EffectModel {
+        EffectModel(
+            id: UUID(),
+            type: .sparkles,
+            parameters: ["start": start, "duration": duration, "intensity": amount,
+                         "seed": Double(Int.random(in: 1...9999)), "color": 2]
+        )
+    }
+
+    /// Anneau lumineux qui s'élargit : intensité = épaisseur et éclat.
+    static func ring(start: Double, duration: Double = 0.7, strength: Double = 1) -> EffectModel {
+        EffectModel(
+            id: UUID(),
+            type: .ring,
+            parameters: ["start": start, "duration": duration, "intensity": strength, "tilt": 0.3, "color": 2]
+        )
+    }
+
+    /// Aberration chromatique : bords rouges et bleus qui s'écartent, intensité = écart (fraction de la largeur).
+    static func chroma(start: Double, duration: Double = 0.4, amount: Double = 0.012) -> EffectModel {
+        EffectModel(
+            id: UUID(),
+            type: .chroma,
+            parameters: ["start": start, "duration": duration, "intensity": amount]
+        )
+    }
+
+    /// Couleur (indice dans TextOverlay.palette) des étincelles et de l'anneau.
+    var colorIndex: Int {
+        get { Int(parameters["color"] ?? 2) }
+        set { parameters["color"] = Double(newValue) }
+    }
+
+    /// Aplatissement de l'anneau (1 = cercle, 0,3 = cerceau vu en perspective).
+    var tilt: Double {
+        get { parameters["tilt"] ?? 0.3 }
+        set { parameters["tilt"] = newValue }
+    }
+
     /// Courbe du zoom : 0 = punch, 1 = doux, 2 = claque (montée instantanée).
     var curve: Int {
         get { Int(parameters["curve"] ?? 0) }
@@ -83,7 +123,18 @@ extension EffectModel {
     }
 
     var intensity: Double {
-        get { parameters["intensity"] ?? (type == .zoom ? 1.4 : (type == .flash ? 0.8 : (type == .glitch ? 0.04 : (type == .glow ? 0.9 : 0.02)))) }
+        get {
+            if let value = parameters["intensity"] { return value }
+            switch type {
+            case .zoom: return 1.4
+            case .flash: return 0.8
+            case .glitch: return 0.04
+            case .glow: return 0.9
+            case .sparkles, .ring: return 1
+            case .chroma: return 0.012
+            default: return 0.02
+            }
+        }
         set { parameters["intensity"] = newValue }
     }
 
@@ -97,6 +148,9 @@ extension EffectModel {
         case .glitch: return "Glitch"
         case .glow: return "Halo"
         case .speed: return "Vitesse"
+        case .sparkles: return "Étincelles"
+        case .ring: return "Anneau"
+        case .chroma: return "Aberration"
         }
     }
 
@@ -108,6 +162,9 @@ extension EffectModel {
         case .glitch: return "square.stack.3d.down.right"
         case .glow: return "sun.max.fill"
         case .speed: return "speedometer"
+        case .sparkles: return "sparkles"
+        case .ring: return "circle.dashed"
+        case .chroma: return "circle.lefthalf.filled.righthalf.striped.horizontal"
         }
     }
 }
@@ -166,6 +223,8 @@ enum EffectEngine {
                 result.glow += effect.intensity * decay(u, curve: effect.curve)
             case .flash:
                 result.flash = min(1, result.flash + effect.intensity * decay(u, curve: effect.curve))
+            case .chroma:
+                result.rgbSplit += effect.intensity * decay(u, curve: effect.curve)
             default:
                 break
             }
