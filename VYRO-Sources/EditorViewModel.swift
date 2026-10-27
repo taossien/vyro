@@ -238,6 +238,8 @@ final class EditorViewModel: ObservableObject {
 
     @Published var isTranscribing = false
     @Published var subtitleLanguage = "fr-FR"
+    /// Vrai : un mot à la fois, façon édit TikTok.
+    @Published var subtitleWordByWord = false
     var subtitleCount: Int { texts.filter { $0.subtitle == true }.count }
 
     func generateSubtitles() {
@@ -257,7 +259,7 @@ final class EditorViewModel: ObservableObject {
                 let audio = try await SubtitleGenerator.exportAudio(of: built.composition)
                 defer { try? FileManager.default.removeItem(at: audio) }
                 let words = try await SubtitleGenerator.transcribe(audio: audio, language: language)
-                let chunks = SubtitleGenerator.chunk(words)
+                let chunks = SubtitleGenerator.chunk(words, maxWords: subtitleWordByWord ? 1 : 4)
                 let size = (try? FileManager.default.attributesOfItem(atPath: audio.path)[.size] as? Int) ?? 0
                 guard !chunks.isEmpty else {
                     throw SubtitleError.noSpeech("(son extrait : " + String(size / 1024) + " Ko, mots : " + String(words.count) + ")")

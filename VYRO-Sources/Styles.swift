@@ -52,6 +52,27 @@ struct StylePreset: Identifiable {
                 return list
             }),
         StylePreset(
+            id: "sombre", name: "Sombre", icon: "moon.stars.fill",
+            blurb: "Froid et contrasté : zooms secs, flou et bords colorés sur le pic",
+            grade: ColorGrade(exposure: -0.15, contrast: 1.35, saturation: 0.85, warmth: -0.45, vignette: 0.6), motionBlur: 1.6,
+            transition: CutTransition(type: 5, duration: 0.3), beatEvery: 4,
+            effects: { time, _, room in
+                var zoom = EffectModel.zoom(start: time, duration: min(0.35, room), peak: 1.3)
+                zoom.curve = 2
+                return [zoom, .glitch(start: time + 0.1, duration: min(0.2, room), amount: 0.035)]
+            }),
+        StylePreset(
+            id: "lueur", name: "Lueur", icon: "sun.max.fill",
+            blurb: "Couleurs vives bleu/violet, halos et flashs doux sur le rythme",
+            grade: ColorGrade(exposure: 0.05, contrast: 1.2, saturation: 1.5, warmth: -0.25, vignette: 0.3), motionBlur: 0.8,
+            transition: CutTransition(type: 0, duration: 0.25), beatEvery: 2,
+            effects: { time, index, room in
+                var list = [EffectModel.glow(start: time, duration: min(0.6, room), strength: 0.8)]
+                if index % 2 == 0 { list.append(.flash(start: time, duration: min(0.1, room), strength: 0.2)) }
+                list.append(.zoom(start: time, duration: min(0.4, room), peak: 1.12))
+                return list
+            }),
+        StylePreset(
             id: "impact", name: "Impact", icon: "burst.fill",
             blurb: "Le grand classique gaming : zoom, secousse, flash et halo",
             grade: ColorGrade.presets[3].grade, motionBlur: 1,

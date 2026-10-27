@@ -4,3 +4,5 @@
 - **Styles** (`Styles.swift`) : Néon, Cinéma, Ultra rapide, Impact. Un toucher pose look, effets sur les temps forts (ou à intervalles réguliers sans musique), transitions et flou. « Retirer le style » annule.
 - **Accueil guidé** : bouton « Importer mes clips » quand le projet est vide, puis 3 étapes (Style, Musique, Exporter).
 - Import multi-sélection depuis Photos.
+- Styles ajoutés d'après des edits Fortnite de référence : **Sombre** (look froid contrasté, zooms secs, aberration chromatique, balayage) et **Lueur** (couleurs vives, halos, flashs doux). Les styles sont des points de départ : chaque effet reste modifiable.
+- Sous-titres : choix **Phrases** ou **Mot par mot**.

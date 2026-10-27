@@ -428,7 +428,7 @@ struct EditorView: View {
 
     private var stylePanel: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Un geste : look, effets sur le rythme, transitions.")
+            Text("Un point de départ : tout reste modifiable ensuite, effet par effet.")
                 .font(.caption)
                 .foregroundColor(Theme.textSecondary)
             ScrollView(.horizontal, showsIndicators: false) {
@@ -790,6 +790,10 @@ struct EditorView: View {
                 ForEach(Array(SubtitleGenerator.languages.enumerated()), id: \.offset) { _, entry in
                     chip(entry.name, selected: vm.subtitleLanguage == entry.code, tint: .mint) { vm.subtitleLanguage = entry.code }
                 }
+            }
+            HStack(spacing: 8) {
+                chip("Phrases", selected: !vm.subtitleWordByWord, tint: .mint) { vm.subtitleWordByWord = false }
+                chip("Mot par mot", selected: vm.subtitleWordByWord, tint: .mint) { vm.subtitleWordByWord = true }
             }
             if vm.isTranscribing {
                 HStack(spacing: 8) {

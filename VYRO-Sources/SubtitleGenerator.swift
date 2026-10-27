@@ -94,7 +94,7 @@ enum SubtitleGenerator {
     }
 
     /// Regroupe les mots en sous-titres courts : 4 mots au plus, 26 signes au plus, coupure sur les pauses.
-    static func chunk(_ words: [SpokenWord]) -> [SubtitleChunk] {
+    static func chunk(_ words: [SpokenWord], maxWords: Int = 4) -> [SubtitleChunk] {
         var chunks: [SubtitleChunk] = []
         var current: [SpokenWord] = []
 
@@ -109,7 +109,7 @@ enum SubtitleGenerator {
             if let last = current.last {
                 let pause = word.start - last.end
                 let length = current.map(\.text).joined(separator: " ").count + word.text.count + 1
-                if pause > 0.45 || current.count >= 4 || length > 26 { flush() }
+                if pause > 0.45 || current.count >= maxWords || length > 26 { flush() }
             }
             current.append(word)
             if let last = current.last, last.text.hasSuffix(".") || last.text.hasSuffix("?") || last.text.hasSuffix("!") {
@@ -123,7 +123,7 @@ enum SubtitleGenerator {
         for (index, item) in chunks.enumerated() {
             var end = item.end + 0.2
             if index + 1 < chunks.count { end = min(end, chunks[index + 1].start) }
-            end = max(end, item.start + 0.4)
+            end = max(end, item.start + (maxWords == 1 ? 0.25 : 0.4))
             result.append(SubtitleChunk(text: item.text, start: item.start, end: end))
         }
         return result
