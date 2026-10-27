@@ -32,6 +32,7 @@ struct RenderPlan {
     var motionBlur: Double = 1
     var grade: ColorGrade?
     var texts: [TextOverlay] = []
+    var keyframes: [Keyframe] = []
 
     /// Faux si le plan ne modifie pas les images (aucun effet actif, pas de stabilisation, un seul clip).
     var needsRendering: Bool {
@@ -40,6 +41,7 @@ struct RenderPlan {
             || outputScale < 0.999
             || !(grade?.isNeutral ?? true)
             || texts.contains { !$0.text.isEmpty }
+            || !keyframes.isEmpty
             || effects.contains { $0.enabled }
     }
 }
@@ -194,7 +196,8 @@ enum VideoPipeline {
                             timeMap: map,
                             motionBlur: plan.motionBlur,
                             grade: plan.grade,
-                            texts: plan.texts
+                            texts: plan.texts,
+                            keyframes: plan.keyframes
                         )],
                         finalSize: finalSize, frameRate: frameRate)
                 }
@@ -307,7 +310,8 @@ enum VideoPipeline {
                 timeMap: spans[index].timeMap,
                 motionBlur: plan.motionBlur,
                 grade: plan.grade,
-                texts: plan.texts
+                texts: plan.texts,
+                keyframes: plan.keyframes
             ))
         }
 

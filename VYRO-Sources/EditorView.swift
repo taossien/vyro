@@ -13,7 +13,7 @@ struct EditorView: View {
     @StateObject private var vm: EditorViewModel
     @State private var panel: ToolPanel?
 
-    enum ToolPanel { case speed, stabilization, trim, music, render, look, text }
+    enum ToolPanel { case speed, stabilization, trim, music, render, look, text, motion }
     @State private var showMusicPicker = false
 
     init(project: ProjectModel? = nil) {
@@ -24,7 +24,7 @@ struct EditorView: View {
         GeometryReader { geo in
             VStack(spacing: 0) {
                 preview
-                    .frame(height: geo.size.height * 0.33)
+                    .frame(height: geo.size.height * ((panel != nil || vm.selectedEffectID != nil) ? 0.2 : 0.28))
                 transport
                 if vm.hasClip { clipStrip }
                 EditorTimeline(vm: vm, onSelectEffect: { id in
@@ -34,6 +34,10 @@ struct EditorView: View {
                     vm.selectedEffectID = nil
                     panel = .text
                     vm.selectText(id: id)
+                }, onSelectKeyframe: { id in
+                    vm.selectedEffectID = nil
+                    panel = .motion
+                    vm.selectKeyframe(id: id)
                 })
                 .padding(.horizontal, 12)
                 .padding(.top, 8)
@@ -264,6 +268,10 @@ struct EditorView: View {
                 vm.selectedEffectID = nil
                 panel = panel == .stabilization ? nil : .stabilization
             }
+            toolButton("Mouvement", icon: "arrow.up.left.and.arrow.down.right", color: .cyan, active: panel == .motion || !vm.keyframes.isEmpty) {
+                vm.selectedEffectID = nil
+                panel = panel == .motion ? nil : .motion
+            }
             toolButton("Texte", icon: "textformat", color: .white, active: panel == .text || !vm.texts.isEmpty) {
                 vm.selectedEffectID = nil
                 panel = panel == .text ? nil : .text
@@ -318,6 +326,8 @@ struct EditorView: View {
             panelContainer(title: "Vitesse", icon: "speedometer") { speedPanel }
         } else if panel == .render {
             panelContainer(title: "Rendu", icon: "sparkles") { renderPanel }
+        } else if panel == .motion {
+            panelContainer(title: "Mouvement", icon: "arrow.up.left.and.arrow.down.right") { motionPanel }
         } else if panel == .text {
             panelContainer(title: "Texte", icon: "textformat") { textPanel }
         } else if panel == .look {
@@ -574,6 +584,57 @@ struct EditorView: View {
         }
     }
 
+    // MARK: Mouvement (images clés)
+
+    private var motionPanel: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(Array(vm.keyframes.enumerated()), id: \.element.id) { index, frame in
+                        chip("K" + String(index + 1), selected: frame.id == vm.selectedKeyframeID, tint: .cyan) {
+                            vm.selectKeyframe(id: frame.id)
+                        }
+                    }
+                    chip("+ Image clé ici", selected: false) { haptic(); vm.addKeyframe() }
+                }
+            }
+            if vm.selectedKeyframe == nil {
+                Text("Ajoute des images clés à différents moments : VYRO anime le zoom, la position et la rotation entre elles.")
+                    .font(.caption)
+                    .foregroundColor(Theme.textSecondary)
+            }
+            if let frame = vm.selectedKeyframe {
+                let id = frame.id
+                sliderRow(label: "Zoom",
+                          value: Binding(get: { frame.scale }, set: { v in vm.updateKeyframe(id: id) { $0.scale = v } }),
+                          range: 1...3, display: String(format: "x%.2f", frame.scale))
+                sliderRow(label: "Horiz.",
+                          value: Binding(get: { frame.x }, set: { v in vm.updateKeyframe(id: id) { $0.x = v } }),
+                          range: -0.5...0.5, display: String(format: "%+.0f %%", frame.x * 100))
+                sliderRow(label: "Vertic.",
+                          value: Binding(get: { frame.y }, set: { v in vm.updateKeyframe(id: id) { $0.y = v } }),
+                          range: -0.5...0.5, display: String(format: "%+.0f %%", frame.y * 100))
+                sliderRow(label: "Rotation",
+                          value: Binding(get: { frame.rotation }, set: { v in vm.updateKeyframe(id: id) { $0.rotation = v } }),
+                          range: -45...45, display: String(format: "%+.0f°", frame.rotation))
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(Array(Keyframe.easeNames.enumerated()), id: \.offset) { index, name in
+                            chip(name, selected: frame.ease == index, tint: .yellow) { vm.updateKeyframe(id: id) { $0.ease = index } }
+                        }
+                    }
+                }
+                HStack {
+                    Text("La courbe règle le passage vers l'image clé suivante.")
+                        .font(.caption2)
+                        .foregroundColor(Theme.textSecondary)
+                    Spacer()
+                    Button(role: .destructive) { vm.removeKeyframe(id: id) } label: { Image(systemName: "trash") }
+                }
+            }
+        }
+    }
+
     // MARK: Texte et sous-titres
 
     private func chip(_ title: String, selected: Bool, tint: Color = .white, action: @escaping () -> Void) -> some View {
@@ -820,9 +881,10 @@ struct EditorTimeline: View {
     @ObservedObject var vm: EditorViewModel
     var onSelectEffect: (UUID) -> Void
     var onSelectText: (UUID) -> Void
+    var onSelectKeyframe: (UUID) -> Void
 
-    private let laneHeight: CGFloat = 22
-    private let laneSpacing: CGFloat = 4
+    private let laneHeight: CGFloat = 19
+    private let laneSpacing: CGFloat = 3
 
     var body: some View {
         GeometryReader { geo in
@@ -838,6 +900,7 @@ struct EditorTimeline: View {
                     effectLane([.flash, .glow], color: Color(white: 0.85), icon: "bolt.fill", width: width, total: total)
                     speedLane(width: width, total: total)
                     textLane(width: width, total: total)
+                    keyframeLane(width: width, total: total)
                 }
                 .padding(.vertical, 8)
 
@@ -867,7 +930,7 @@ struct EditorTimeline: View {
                     .onEnded { _ in vm.isScrubbing = false }
             )
         }
-        .frame(height: laneHeight * 6 + laneSpacing * 5 + 16)
+        .frame(height: laneHeight * 7 + laneSpacing * 6 + 16)
     }
 
     private func effectLane(_ types: [EffectModel.EffectType], color: Color, icon: String, width: CGFloat, total: Double) -> some View {
@@ -887,6 +950,33 @@ struct EditorTimeline: View {
                     onSelect: { onSelectEffect(effect.id) },
                     onMove: { newStart in vm.updateEffect(id: effect.id) { $0.start = vm.snap(newStart) } }
                 )
+            }
+        }
+        .frame(height: laneHeight)
+        .clipped()
+    }
+
+    private func keyframeLane(width: CGFloat, total: Double) -> some View {
+        ZStack(alignment: .leading) {
+            RoundedRectangle(cornerRadius: 5).fill(Color.white.opacity(0.04))
+            Image(systemName: "arrow.up.left.and.arrow.down.right")
+                .font(.system(size: 10))
+                .foregroundColor(Color.cyan.opacity(0.5))
+                .padding(.leading, 6)
+            ForEach(vm.keyframes) { frame in
+                Image(systemName: "diamond.fill")
+                    .font(.system(size: 14))
+                    .foregroundColor(frame.id == vm.selectedKeyframeID ? .white : .cyan)
+                    .offset(x: CGFloat(frame.time / total) * width - 7)
+                    .gesture(
+                        DragGesture(minimumDistance: 4)
+                            .onEnded { value in
+                                let time = frame.time + Double(value.translation.width / width) * total
+                                vm.updateKeyframe(id: frame.id) { $0.time = vm.snap(time) }
+                                onSelectKeyframe(frame.id)
+                            }
+                    )
+                    .onTapGesture { onSelectKeyframe(frame.id) }
             }
         }
         .frame(height: laneHeight)

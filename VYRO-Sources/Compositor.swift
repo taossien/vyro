@@ -35,6 +35,7 @@ final class VYROInstruction: NSObject, AVVideoCompositionInstructionProtocol {
     let motionBlur: Double
     let grade: ColorGrade?
     let texts: [TextOverlay]
+    let keyframes: [Keyframe]
 
     init(timeRange: CMTimeRange,
          trackID: CMPersistentTrackID,
@@ -48,7 +49,8 @@ final class VYROInstruction: NSObject, AVVideoCompositionInstructionProtocol {
          timeMap: TimeMap,
          motionBlur: Double,
          grade: ColorGrade? = nil,
-         texts: [TextOverlay] = []) {
+         texts: [TextOverlay] = [],
+         keyframes: [Keyframe] = []) {
         self.timeRange = timeRange
         self.trackID = trackID
         self.requiredSourceTrackIDs = [NSNumber(value: trackID)]
@@ -63,6 +65,7 @@ final class VYROInstruction: NSObject, AVVideoCompositionInstructionProtocol {
         self.motionBlur = motionBlur
         self.grade = grade
         self.texts = texts
+        self.keyframes = keyframes
         super.init()
     }
 }
@@ -121,6 +124,7 @@ enum FrameRenderer {
         var rgbSplit: Double
         var flash: Double
         var glow: Double
+        var rotation: Double = 0
     }
 
     static func orientation(for t: CGAffineTransform) -> CGImagePropertyOrientation {
@@ -143,7 +147,14 @@ enum FrameRenderer {
             dx += c.dx
             dy -= c.dy      // Vision : axe Y vers le haut ; calque : vers le bas
         }
-        return State(scale: scale, dx: dx, dy: dy, rgbSplit: fx.rgbSplit, flash: fx.flash, glow: fx.glow)
+        var rotation = 0.0
+        if let key = KeyframeEngine.value(at: time, instruction.keyframes) {
+            scale *= key.scale
+            dx += key.x
+            dy += key.y
+            rotation = key.rotation
+        }
+        return State(scale: scale, dx: dx, dy: dy, rgbSplit: fx.rgbSplit, flash: fx.flash, glow: fx.glow, rotation: rotation)
     }
 
     static func render(source: CIImage, time: Double, instruction: VYROInstruction) -> CIImage {
@@ -284,6 +295,9 @@ enum FrameRenderer {
         let w = size.width, h = size.height
         var t = CGAffineTransform(translationX: -w / 2, y: -h / 2)
         t = t.concatenating(CGAffineTransform(scaleX: CGFloat(s.scale), y: CGFloat(s.scale)))
+        if abs(s.rotation) > 0.001 {
+            t = t.concatenating(CGAffineTransform(rotationAngle: CGFloat(-s.rotation * .pi / 180)))
+        }
         t = t.concatenating(CGAffineTransform(translationX: w / 2 + CGFloat(s.dx) * w,
                                               y: h / 2 - CGFloat(s.dy) * h))
         return image.transformed(by: t)

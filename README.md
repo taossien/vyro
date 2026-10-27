@@ -72,3 +72,7 @@ Limites connues : un seul clip par montage, effets positionnés en temps de mont
 - Outil Texte : plusieurs textes, début et durée, taille, hauteur, 4 styles (simple, contour, fond, néon), 6 couleurs, animation (pop, fondu).
 - Outil Look : étalonnage (presets Néon, Cinéma, Sombre, Vif, Rétro + réglages).
 - Les textes ont leur piste sur la timeline (toucher, glisser) et 6 polices au choix.
+
+### Mouvement (images clés)
+- Piste Mouvement : images clés de zoom, position et rotation, avec une courbe (lisse, linéaire, rapide, maintenu) vers l'image clé suivante.
+- Le flou de mouvement s'applique aussi aux mouvements créés avec les images clés.

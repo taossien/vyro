@@ -143,8 +143,59 @@ final class EditorViewModel: ObservableObject {
             originalVolume: originalVolume,
             motionBlur: motionBlurStrength,
             grade: colorGrade,
-            texts: texts
+            texts: texts,
+            keyframes: keyframes
         )
+    }
+
+    // MARK: - Mouvement (images clés)
+
+    @Published var selectedKeyframeID: UUID?
+    var keyframes: [Keyframe] { (project.tracks.first?.clips.first?.keyframes ?? []).sorted { $0.time < $1.time } }
+    var selectedKeyframe: Keyframe? { keyframes.first { $0.id == selectedKeyframeID } }
+
+    /// Ajoute une image clé à la tête de lecture, avec l'état actuel (l'image ne change pas).
+    func addKeyframe() {
+        guard hasClip, duration > 0 else { return }
+        let time = min(max(snap(playhead), 0), duration)
+        var frame = KeyframeEngine.value(at: time, keyframes) ?? Keyframe(id: UUID(), time: time)
+        frame.id = UUID()
+        frame.time = time
+        var list = keyframes.filter { abs($0.time - time) > 0.05 }
+        list.append(frame)
+        mutateClip { $0.keyframes = list }
+        selectedKeyframeID = frame.id
+        scheduleRebuild()
+    }
+
+    func updateKeyframe(id: UUID, _ change: (inout Keyframe) -> Void) {
+        mutateClip { clip in
+            guard var list = clip.keyframes, let index = list.firstIndex(where: { $0.id == id }) else { return }
+            change(&list[index])
+            list[index].time = min(max(list[index].time, 0), max(duration, 0))
+            clip.keyframes = list
+        }
+        scheduleRebuild()
+    }
+
+    func removeKeyframe(id: UUID) {
+        mutateClip { clip in
+            let list = (clip.keyframes ?? []).filter { $0.id != id }
+            clip.keyframes = list.isEmpty ? nil : list
+        }
+        if selectedKeyframeID == id { selectedKeyframeID = nil }
+        scheduleRebuild()
+    }
+
+    func clearKeyframes() {
+        mutateClip { $0.keyframes = nil }
+        selectedKeyframeID = nil
+        scheduleRebuild()
+    }
+
+    func selectKeyframe(id: UUID) {
+        selectedKeyframeID = id
+        if let frame = keyframes.first(where: { $0.id == id }) { seek(to: frame.time) }
     }
 
     // MARK: - Textes
@@ -443,6 +494,7 @@ final class EditorViewModel: ObservableObject {
         clip.motionBlur = nil
         clip.colorGrade = nil
         clip.texts = nil
+        clip.keyframes = nil
     }
 
     /// Réordonne / retire des clips en gardant les réglages globaux sur le premier.
@@ -460,6 +512,7 @@ final class EditorViewModel: ObservableObject {
             clips[0].motionBlur = globals.motionBlur
             clips[0].colorGrade = globals.colorGrade
             clips[0].texts = globals.texts
+            clips[0].keyframes = globals.keyframes
         }
     }
 
