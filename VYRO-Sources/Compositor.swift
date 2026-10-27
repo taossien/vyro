@@ -270,6 +270,7 @@ enum FrameRenderer {
             let u = time - overlay.start
             var scale = 1.0
             var alpha = 1.0
+            var spin = 0.0
             switch overlay.animation {
             case 1:
                 let k = min(u / 0.2, 1)
@@ -277,6 +278,12 @@ enum FrameRenderer {
                 alpha = min(u / 0.08, 1)
             case 2:
                 alpha = min(u / 0.2, 1)
+            case 3:
+                let k = min(u / 0.3, 1)
+                let eased = 1 - pow(1 - k, 3)
+                scale = 0.5 + 0.5 * eased
+                alpha = min(u / 0.08, 1)
+                spin = -30 * (1 - eased)
             default: break
             }
             let remaining = overlay.end - time
@@ -284,6 +291,8 @@ enum FrameRenderer {
             let extent = label.extent
             var t = CGAffineTransform(translationX: -extent.width / 2, y: -extent.height / 2)
             t = t.concatenating(CGAffineTransform(scaleX: scale, y: scale))
+            let angle = (-(overlay.rotation ?? 0) + spin) * .pi / 180
+            if angle != 0 { t = t.concatenating(CGAffineTransform(rotationAngle: CGFloat(angle))) }
             t = t.concatenating(CGAffineTransform(translationX: w / 2, y: h * (1 - overlay.y)))
             var placed = label.transformed(by: t)
             if alpha < 0.999 {

@@ -41,7 +41,7 @@ struct EditorView: View {
                     vm.selectedEffectID = nil
                     panel = .motion
                     vm.selectKeyframe(id: id)
-                })
+                }, advanced: advanced)
                 .padding(.horizontal, 12)
                 .padding(.top, 8)
                 contextPanel
@@ -747,7 +747,7 @@ struct EditorView: View {
                 sliderRow(label: "Vertic.",
                           value: Binding(get: { frame.y }, set: { v in vm.updateKeyframe(id: id) { $0.y = v } }),
                           range: -0.5...0.5, display: String(format: "%+.0f %%", frame.y * 100))
-                sliderRow(label: "Rotation",
+                sliderRow(label: "Angle",
                           value: Binding(get: { frame.rotation }, set: { v in vm.updateKeyframe(id: id) { $0.rotation = v } }),
                           range: -45...45, display: String(format: "%+.0f°", frame.rotation))
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -859,6 +859,9 @@ struct EditorView: View {
                 sliderRow(label: "Taille",
                           value: Binding(get: { item.size }, set: { v in vm.updateText(id: id) { $0.size = v } }),
                           range: 0.04...0.2, display: String(format: "%.0f %%", item.size * 500))
+                sliderRow(label: "Angle",
+                          value: Binding(get: { item.rotation ?? 0 }, set: { v in vm.updateText(id: id) { $0.rotation = abs(v) < 2 ? nil : v } }),
+                          range: -45...45, display: String(format: "%+.0f°", item.rotation ?? 0))
                 sliderRow(label: "Hauteur",
                           value: Binding(get: { 1 - item.y }, set: { v in vm.updateText(id: id) { $0.y = 1 - v } }),
                           range: 0.05...0.95, display: String(format: "%.0f %%", (1 - item.y) * 100))
@@ -1067,7 +1070,10 @@ struct EditorTimeline: View {
     var onSelectEffect: (UUID) -> Void
     var onSelectText: (UUID) -> Void
     var onSelectKeyframe: (UUID) -> Void
+    /// Mode simple : une seule piste pour tous les effets, plus texte et vitesse.
+    var advanced = true
 
+    private var laneCount: Int { advanced ? 7 : 3 }
     private let laneHeight: CGFloat = 19
     private let laneSpacing: CGFloat = 3
 
@@ -1079,13 +1085,19 @@ struct EditorTimeline: View {
                 RoundedRectangle(cornerRadius: 10).fill(Theme.surface)
 
                 VStack(spacing: laneSpacing) {
-                    effectLane([.zoom], color: Theme.accent, icon: "plus.magnifyingglass", width: width, total: total)
-                    effectLane([.shake], color: Theme.accentBlue, icon: "waveform.path", width: width, total: total)
-                    effectLane([.glitch], color: .pink, icon: "square.stack.3d.down.right", width: width, total: total)
-                    effectLane([.flash, .glow], color: Color(white: 0.85), icon: "bolt.fill", width: width, total: total)
-                    speedLane(width: width, total: total)
-                    textLane(width: width, total: total)
-                    keyframeLane(width: width, total: total)
+                    if advanced {
+                        effectLane([.zoom], color: Theme.accent, icon: "plus.magnifyingglass", width: width, total: total)
+                        effectLane([.shake], color: Theme.accentBlue, icon: "waveform.path", width: width, total: total)
+                        effectLane([.glitch], color: .pink, icon: "square.stack.3d.down.right", width: width, total: total)
+                        effectLane([.flash, .glow], color: Color(white: 0.85), icon: "bolt.fill", width: width, total: total)
+                        speedLane(width: width, total: total)
+                        textLane(width: width, total: total)
+                        keyframeLane(width: width, total: total)
+                    } else {
+                        effectLane([.zoom, .shake, .glitch, .flash, .glow], color: Theme.accent, icon: "burst.fill", width: width, total: total)
+                        speedLane(width: width, total: total)
+                        textLane(width: width, total: total)
+                    }
                 }
                 .padding(.vertical, 8)
 
@@ -1115,7 +1127,7 @@ struct EditorTimeline: View {
                     .onEnded { _ in vm.isScrubbing = false }
             )
         }
-        .frame(height: laneHeight * 7 + laneSpacing * 6 + 16)
+        .frame(height: laneHeight * CGFloat(laneCount) + laneSpacing * CGFloat(laneCount - 1) + 16)
     }
 
     private func effectLane(_ types: [EffectModel.EffectType], color: Color, icon: String, width: CGFloat, total: Double) -> some View {

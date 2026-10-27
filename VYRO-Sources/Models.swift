@@ -98,12 +98,14 @@ struct TextOverlay: Codable, Identifiable, Equatable {
     var colorIndex: Int = 0
     /// 0 simple, 1 contour, 2 fond, 3 néon.
     var style: Int = 1
-    /// 0 aucune, 1 pop, 2 fondu.
+    /// 0 aucune, 1 pop, 2 fondu, 3 pop avec rotation.
     var animation: Int = 1
     /// Police (indice dans fontNames), nil = la première.
     var font: Int?
     /// Vrai pour les textes créés par les sous-titres automatiques.
     var subtitle: Bool?
+    /// Inclinaison en degrés (nil = 0).
+    var rotation: Double?
 
     var end: Double { start + duration }
 
@@ -113,7 +115,7 @@ struct TextOverlay: Codable, Identifiable, Equatable {
     ]
     static let fontNames = ["Impact", "Arrondi", "Serif", "Mono", "Condensé", "Futura"]
     static let styleNames = ["Simple", "Contour", "Fond", "Néon"]
-    static let animationNames = ["Aucune", "Pop", "Fondu"]
+    static let animationNames = ["Aucune", "Pop", "Fondu", "Tourne"]
 }
 
 /// Étalonnage couleur : réglages simples, inspirés des looks des créateurs.

@@ -6,3 +6,5 @@
 - Import multi-sélection depuis Photos.
 - Styles ajoutés d'après des edits Fortnite de référence : **Sombre** (look froid contrasté, zooms secs, aberration chromatique, balayage) et **Lueur** (couleurs vives, halos, flashs doux). Les styles sont des points de départ : chaque effet reste modifiable.
 - Sous-titres : choix **Phrases** ou **Mot par mot**.
+- Texte : curseur **Angle** (-45° à +45°) et animation **Tourne** (pop avec rotation).
+- Mode simple : la timeline n'affiche que 3 pistes (effets, vitesse, texte) pour laisser de la place aux panneaux.
