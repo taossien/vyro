@@ -106,3 +106,7 @@ Limites connues : un seul clip par montage, effets positionnés en temps de mont
 ## Sous-titres karaoké
 
 Option « Karaoké » dans les sous-titres automatiques : phrases de 4 mots, le mot prononcé passe en jaune (blanc si le texte est jaune). Les débuts de mots sont stockés dans `TextOverlay.wordStarts`.
+
+## Transitions (15)
+
+Flash, Zoom, Glitch, Flou, Noir, Whip, puis Spin, Glissé, Strobe, Flash zoom, Tremble, Glitch+, Whip V, Punch, Roulis. Toutes sont calculées dans `FrameRenderer.state` (échelle, décalage, rotation, flou, flash), sans filtre supplémentaire.

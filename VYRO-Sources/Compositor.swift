@@ -177,7 +177,38 @@ enum FrameRenderer {
                 dx += (r - floor(r) - 0.5) * 0.05 * w
             case 3: blur = max(blur, w)
             case 4: dim = max(dim, pow(w, 0.8))
-            default: dx += (d < 0 ? -1.0 : 1.0) * 0.6 * w * w
+            case 5: dx += (d < 0 ? -1.0 : 1.0) * 0.6 * w * w
+            case 6:                                      // Spin : la caméra tourne et zoome
+                rotation += (d < 0 ? -1.0 : 1.0) * 25 * w * w
+                scale *= 1 + 0.5 * w
+            case 7: dy += (d < 0 ? -1.0 : 1.0) * 0.6 * w * w
+            case 8:                                      // Strobe : éclairs rapides
+                if Int(floor(time * 30)) % 2 == 0 { flash = min(1, flash + w) }
+            case 9:
+                flash = min(1, flash + pow(w, 1.5))
+                scale *= 1 + 0.3 * w * w
+            case 10:                                     // Tremble
+                let r1 = sin(floor(time * 30) * 12.9898) * 43758.5453
+                let r2 = sin(floor(time * 30) * 78.233) * 12345.6789
+                dx += (r1 - floor(r1) - 0.5) * 0.08 * w
+                dy += (r2 - floor(r2) - 0.5) * 0.08 * w
+                scale *= 1 + 0.12 * w
+            case 11:                                     // Glitch+ : fort, décalé dans les deux axes
+                rgb += 0.05 * w
+                let r1 = sin(floor(time * 24) * 12.9898) * 43758.5453
+                let r2 = sin(floor(time * 24) * 4.1414) * 9999.123
+                dx += (r1 - floor(r1) - 0.5) * 0.1 * w
+                dy += (r2 - floor(r2) - 0.5) * 0.04 * w
+                scale *= 1.06
+            case 12:
+                dy += (d < 0 ? 1.0 : -1.0) * 0.6 * w * w
+                blur = max(blur, 0.6 * w)
+            case 13:                                     // Punch : gros zoom flou
+                scale *= 1 + 0.7 * w * w
+                blur = max(blur, 0.4 * w)
+            default:                                     // Roulis
+                rotation += (d < 0 ? 1.0 : -1.0) * 12 * w
+                scale *= 1 + 0.25 * w
             }
         }
         return State(scale: scale, dx: dx, dy: dy, rgbSplit: rgb, flash: flash, glow: fx.glow,

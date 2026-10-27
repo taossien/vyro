@@ -87,7 +87,8 @@ struct CutTransition: Codable, Equatable {
     var type: Int = 0
     var duration: Double = 0.3
 
-    static let names = ["Flash", "Zoom", "Glitch", "Flou", "Noir", "Whip"]
+    static let names = ["Flash", "Zoom", "Glitch", "Flou", "Noir", "Whip",
+                        "Spin", "Glissé", "Strobe", "Flash zoom", "Tremble", "Glitch+", "Whip V", "Punch", "Roulis"]
 }
 
 /// Un texte affiché pendant un moment du montage.
