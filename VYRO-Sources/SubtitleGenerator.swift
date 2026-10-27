@@ -37,6 +37,7 @@ struct SubtitleChunk {
     let text: String
     let start: Double
     let end: Double
+    var wordStarts: [Double] = []
 }
 
 enum SubtitleGenerator {
@@ -101,7 +102,8 @@ enum SubtitleGenerator {
         func flush() {
             guard let first = current.first, let last = current.last else { return }
             let text = current.map(\.text).joined(separator: " ")
-            chunks.append(SubtitleChunk(text: text, start: first.start, end: last.end))
+            chunks.append(SubtitleChunk(text: text, start: first.start, end: last.end,
+                                        wordStarts: current.map { max($0.start - first.start, 0) }))
             current = []
         }
 
@@ -124,7 +126,7 @@ enum SubtitleGenerator {
             var end = item.end + 0.2
             if index + 1 < chunks.count { end = min(end, chunks[index + 1].start) }
             end = max(end, item.start + (maxWords == 1 ? 0.25 : 0.4))
-            result.append(SubtitleChunk(text: item.text, start: item.start, end: end))
+            result.append(SubtitleChunk(text: item.text, start: item.start, end: end, wordStarts: item.wordStarts))
         }
         return result
     }

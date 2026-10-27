@@ -102,3 +102,7 @@ Limites connues : un seul clip par montage, effets positionnés en temps de mont
 
 - **Smash** : zoom 1,7 en 0,3 s (courbe Claque) + secousse + aberration. **Hole** : plongée 2,1 sur 1,1 s (courbe Douce) + halo + aberration. Chaque effet reste modifiable.
 - Vitesse : **Hero time** (accélère, ralenti net x0,2 sur l'impact, repart) et **Ralenti doux** (x0,5 sur 1 s).
+
+## Sous-titres karaoké
+
+Option « Karaoké » dans les sous-titres automatiques : phrases de 4 mots, le mot prononcé passe en jaune (blanc si le texte est jaune). Les débuts de mots sont stockés dans `TextOverlay.wordStarts`.

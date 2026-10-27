@@ -913,8 +913,15 @@ struct EditorView: View {
                 }
             }
             HStack(spacing: 8) {
-                chip("Phrases", selected: !vm.subtitleWordByWord, tint: .mint) { vm.subtitleWordByWord = false }
-                chip("Mot par mot", selected: vm.subtitleWordByWord, tint: .mint) { vm.subtitleWordByWord = true }
+                chip("Phrases", selected: !vm.subtitleWordByWord && !vm.subtitleKaraoke, tint: .mint) {
+                    vm.subtitleWordByWord = false; vm.subtitleKaraoke = false
+                }
+                chip("Karaoké", selected: vm.subtitleKaraoke, tint: .mint) {
+                    vm.subtitleWordByWord = false; vm.subtitleKaraoke = true
+                }
+                chip("Mot par mot", selected: vm.subtitleWordByWord, tint: .mint) {
+                    vm.subtitleWordByWord = true; vm.subtitleKaraoke = false
+                }
             }
             if vm.isTranscribing {
                 HStack(spacing: 8) {

@@ -270,8 +270,12 @@ enum FrameRenderer {
         }
 
         for overlay in instruction.texts where time >= overlay.start && time <= overlay.end {
-            guard let label = TextRenderer.image(for: overlay, canvasWidth: w) else { continue }
             let u = time - overlay.start
+            var active: Int?
+            if let starts = overlay.wordStarts {
+                active = starts.lastIndex(where: { u >= $0 - 0.02 }) ?? 0
+            }
+            guard let label = TextRenderer.image(for: overlay, canvasWidth: w, active: active) else { continue }
             var scale = 1.0
             var alpha = 1.0
             var spin = 0.0
@@ -400,10 +404,10 @@ enum TextRenderer {
         }
     }
 
-    static func image(for overlay: TextOverlay, canvasWidth: CGFloat) -> CIImage? {
+    static func image(for overlay: TextOverlay, canvasWidth: CGFloat, active: Int? = nil) -> CIImage? {
         guard !overlay.text.isEmpty else { return nil }
         let key = [overlay.text, String(overlay.size), String(overlay.style),
-                   String(overlay.colorIndex), String(overlay.font ?? 0), String(Int(canvasWidth))].joined(separator: "|")
+                   String(overlay.colorIndex), String(overlay.font ?? 0), String(Int(canvasWidth)), String(active ?? -1)].joined(separator: "|")
         lock.lock()
         if let hit = cache[key] { lock.unlock(); return hit }
         lock.unlock()
@@ -430,7 +434,19 @@ enum TextRenderer {
             attributes[.shadow] = shadow
         default: break
         }
-        let string = NSAttributedString(string: overlay.text, attributes: attributes)
+        let string = NSMutableAttributedString(string: overlay.text, attributes: attributes)
+        if let active {
+            // Mot en cours : jaune (ou blanc si le texte est déjà jaune), un peu plus gros.
+            let highlight = overlay.colorIndex == 1 ? UIColor.white : UIColor(red: 1, green: 0.92, blue: 0.2, alpha: 1)
+            var location = 0
+            for (index, word) in overlay.text.split(separator: " ", omittingEmptySubsequences: false).enumerated() {
+                let length = (word as Substring).utf16.count
+                if index == active, length > 0 {
+                    string.addAttribute(.foregroundColor, value: highlight, range: NSRange(location: location, length: length))
+                }
+                location += length + 1
+            }
+        }
         let options: NSStringDrawingOptions = [.usesLineFragmentOrigin, .usesFontLeading]
         let box = string.boundingRect(
             with: CGSize(width: canvasWidth * 0.9, height: .greatestFiniteMagnitude),

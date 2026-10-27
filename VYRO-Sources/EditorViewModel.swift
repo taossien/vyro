@@ -300,6 +300,8 @@ final class EditorViewModel: ObservableObject {
     @Published var subtitleLanguage = "fr-FR"
     /// Vrai : un mot à la fois, façon édit TikTok.
     @Published var subtitleWordByWord = false
+    /// Vrai : phrases courtes avec le mot prononcé surligné.
+    @Published var subtitleKaraoke = false
     var subtitleCount: Int { texts.filter { $0.subtitle == true }.count }
 
     func generateSubtitles() {
@@ -308,6 +310,7 @@ final class EditorViewModel: ObservableObject {
         player?.pause()
         isPlaying = false
         let language = subtitleLanguage
+        let karaoke = subtitleKaraoke && !subtitleWordByWord
         var voicePlan = plan
         voicePlan.musicURL = nil
         voicePlan.originalVolume = 1
@@ -333,6 +336,10 @@ final class EditorViewModel: ObservableObject {
                     overlay.font = 5
                     overlay.animation = 1
                     overlay.subtitle = true
+                    if karaoke, chunk.wordStarts.count > 1 {
+                        overlay.wordStarts = chunk.wordStarts
+                        overlay.size = 0.075
+                    }
                     return overlay
                 }
                 mutateClip { clip in

@@ -110,6 +110,8 @@ struct TextOverlay: Codable, Identifiable, Equatable {
     var subtitle: Bool?
     /// Inclinaison en degrés (nil = 0).
     var rotation: Double?
+    /// Karaoké : début de chaque mot (s, depuis le début du texte). Le mot en cours est surligné.
+    var wordStarts: [Double]?
 
     var end: Double { start + duration }
 
