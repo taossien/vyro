@@ -854,6 +854,43 @@ final class EditorViewModel: ObservableObject {
         rebuildNow()
     }
 
+    // MARK: - Coupe automatique sur le rythme
+
+    /// Découpe le montage sur les temps forts (un sur `every`), sans changer sa durée.
+    /// Renvoie le nombre de coupes faites.
+    @discardableResult
+    func autoCutOnBeats(every: Int = 2) -> Int {
+        guard hasClip, duration > 1, !spans.isEmpty else { return 0 }
+        let marks = rhythmMarks(every: every)
+        let layout = spans
+        var cuts: [(index: Int, source: Double)] = []
+        for mark in marks {
+            guard let index = layout.lastIndex(where: { mark >= $0.start }), mark < layout[index].end - 0.2 else { continue }
+            cuts.append((index, layout[index].timeMap.sourceTime(atOutput: mark - layout[index].start)))
+        }
+        var made = 0
+        mutateAll { clips in
+            for cut in cuts.sorted(by: { ($0.index, $0.source) > ($1.index, $1.source) }) {
+                guard clips.indices.contains(cut.index), clips[cut.index].hold == nil else { continue }
+                let clip = clips[cut.index]
+                let low = (clip.trimIn ?? 0) + 0.2
+                let high = (clip.trimOut ?? clip.sourceOut) - 0.2
+                guard cut.source > low, cut.source < high else { continue }
+                var right = clip
+                right.id = UUID()
+                stripGlobals(&right)
+                right.trimIn = cut.source
+                right.transition = nil
+                clips[cut.index].trimOut = cut.source
+                clips.insert(right, at: cut.index + 1)
+                made += 1
+            }
+        }
+        if made > 0 { rebuildNow() }
+        else { errorMessage = "Aucun temps fort à découper : ajoute d'abord une musique." }
+        return made
+    }
+
     // MARK: - Image figée et rediffusion
 
     /// Décale ce qui se trouve après `time` de `delta` secondes (un clip vient d'être inséré).

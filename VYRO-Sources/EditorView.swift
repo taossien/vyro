@@ -277,6 +277,11 @@ struct EditorView: View {
                 panel = nil
                 vm.addSmash()
             }
+            toolButton("Coupe auto", icon: "scissors.badge.ellipsis", color: .green, active: false) {
+                haptic()
+                panel = nil
+                vm.autoCutOnBeats()
+            }
             toolButton("Hole", icon: "scope", color: .purple, active: false) {
                 haptic()
                 panel = nil
