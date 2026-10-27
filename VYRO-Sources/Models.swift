@@ -65,6 +65,8 @@ struct ClipModel: Codable, Identifiable, Equatable {
     var musicVolume: Double?
     var originalVolume: Double?
     var musicOffset: Double?
+    /// Force du flou de mouvement (nil = 1, rendu cinéma).
+    var motionBlur: Double?
 }
 
 struct TrackModel: Codable, Identifiable, Equatable {

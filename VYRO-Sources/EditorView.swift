@@ -13,7 +13,7 @@ struct EditorView: View {
     @StateObject private var vm: EditorViewModel
     @State private var panel: ToolPanel?
 
-    enum ToolPanel { case speed, stabilization, trim, music }
+    enum ToolPanel { case speed, stabilization, trim, music, render }
     @State private var showMusicPicker = false
 
     init(project: ProjectModel? = nil) {
@@ -207,6 +207,10 @@ struct EditorView: View {
                 vm.selectedEffectID = nil
                 panel = panel == .stabilization ? nil : .stabilization
             }
+            toolButton("Rendu", icon: "sparkles", color: .cyan, active: panel == .render) {
+                vm.selectedEffectID = nil
+                panel = panel == .render ? nil : .render
+            }
             toolButton("Musique", icon: "music.note", color: .mint, active: panel == .music || vm.musicName != nil) {
                 vm.selectedEffectID = nil
                 panel = panel == .music ? nil : .music
@@ -246,6 +250,8 @@ struct EditorView: View {
             panelContainer(title: effect.title, icon: effect.systemImage) { effectPanel(effect) }
         } else if panel == .speed {
             panelContainer(title: "Vitesse", icon: "speedometer") { speedPanel }
+        } else if panel == .render {
+            panelContainer(title: "Rendu", icon: "sparkles") { renderPanel }
         } else if panel == .music {
             panelContainer(title: "Musique", icon: "music.note") { musicPanel }
         } else if panel == .trim {
@@ -473,6 +479,20 @@ struct EditorView: View {
                 .padding(.vertical, 10)
                 .background(RoundedRectangle(cornerRadius: 10).fill(Color.yellow.opacity(0.2)))
                 .foregroundColor(.white)
+        }
+    }
+
+    // MARK: Rendu
+
+    private var renderPanel: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sliderRow(label: "Flou",
+                      value: Binding(get: { vm.motionBlurStrength }, set: { vm.setMotionBlur($0) }),
+                      range: 0...2,
+                      display: vm.motionBlurStrength < 0.05 ? "Aucun" : String(format: "x%.1f", vm.motionBlurStrength))
+            Text("Flou de mouvement : les zooms et secousses rapides deviennent fluides, comme avec l'obturateur d'une caméra. 1 correspond au rendu cinéma, 0 le désactive.")
+                .font(.caption)
+                .foregroundColor(Theme.textSecondary)
         }
     }
 

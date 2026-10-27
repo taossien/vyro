@@ -113,6 +113,8 @@ struct FrameTransform {
     var margin: Double = 0
     /// Blancheur ajoutée (0 = rien, 1 = écran blanc).
     var flash: Double = 0
+    /// Séparation des couleurs (aberration chromatique), en fraction de la largeur.
+    var rgbSplit: Double = 0
 }
 
 enum EffectEngine {
@@ -134,6 +136,7 @@ enum EffectEngine {
                 result.dx += effect.intensity * decay * noise(seed: seed, x: x, channel: 0)
                 result.dy += effect.intensity * decay * noise(seed: seed, x: x, channel: 1)
                 result.margin += 2 * effect.intensity * decay
+                result.rgbSplit += effect.intensity * 0.15 * decay
             case .glitch:
                 let seed = UInt32(truncatingIfNeeded: Int(effect.parameters["seed"] ?? 1))
                 let step = Int(floor(time * glitchRate))
@@ -144,6 +147,7 @@ enum EffectEngine {
                     result.dx += effect.intensity * decay * hash(seed: seed, index: step, channel: 0)
                     result.dy += effect.intensity * 0.25 * decay * hash(seed: seed, index: step, channel: 1)
                     result.margin += 2 * effect.intensity * decay
+                    result.rgbSplit += effect.intensity * 0.35 * decay
                 }
             case .flash:
                 result.flash = min(1, result.flash + effect.intensity * (1 - u) * (1 - u))

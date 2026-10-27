@@ -98,8 +98,16 @@ final class EditorViewModel: ObservableObject {
             musicURL: musicURL,
             musicVolume: musicVolume,
             musicOffset: musicOffset,
-            originalVolume: originalVolume
+            originalVolume: originalVolume,
+            motionBlur: motionBlurStrength
         )
+    }
+
+    var motionBlurStrength: Double { project.tracks.first?.clips.first?.motionBlur ?? 1 }
+
+    func setMotionBlur(_ value: Double) {
+        mutateClip { $0.motionBlur = value }
+        scheduleRebuild()
     }
 
     // MARK: - Musique et rythme

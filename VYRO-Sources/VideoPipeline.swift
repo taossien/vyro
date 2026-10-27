@@ -22,6 +22,8 @@ struct RenderPlan {
     var musicVolume: Double = 0.8
     var musicOffset: Double = 0
     var originalVolume: Double = 1
+    /// Force du flou de mouvement (0 = aucun, 1 = rendu cinéma).
+    var motionBlur: Double = 1
 
     /// Faux si le plan ne modifie pas les images (aucun effet actif, pas de stabilisation).
     var needsRendering: Bool {
@@ -232,14 +234,7 @@ enum VideoPipeline {
         )
     }
 
-    // MARK: Instructions (une par changement de cadrage, à cadence fixe)
-
-    private struct FrameKey: Equatable {
-        var scale: Double
-        var dx: Double
-        var dy: Double
-        var flash: Double
-    }
+    // MARK: Composition vidéo (rendu image par image par VYROCompositor)
 
     private static func makeVideoComposition(track: AVAssetTrack,
                                              preferred: CGAffineTransform,
@@ -249,73 +244,24 @@ enum VideoPipeline {
                                              frameRate: Float,
                                              plan: RenderPlan,
                                              timeMap: TimeMap) -> AVMutableVideoComposition {
-        let step = CMTimeValue(600 / effectFPS)            // 1/30 s en unités de 1/600 s
-        let count = max(1, Int((duration.seconds * Double(effectFPS) - 1e-6).rounded(.up)))
-        let stabilizationCrop = plan.stabilization?.cropScale ?? 1
-
-        // Cadrage de chaque pas de 1/30 s ; les pas identiques sont fusionnés.
-        var segments: [(start: Int, key: FrameKey)] = []
-        for i in 0..<count {
-            let time = Double(i) / Double(effectFPS)
-            let fx = EffectEngine.transform(at: time, effects: plan.effects)
-            var scale = fx.scale * (1 + fx.margin)
-            var dx = fx.dx
-            var dy = fx.dy
-            if let stabilization = plan.stabilization {
-                let c = stabilization.correction(atSourceTime: timeMap.sourceTime(atOutput: time))
-                scale *= stabilizationCrop
-                dx += c.dx
-                dy -= c.dy      // Vision : axe Y vers le haut ; calque : vers le bas
-            }
-            let key = FrameKey(scale: scale, dx: dx, dy: dy, flash: (fx.flash * 50).rounded() / 50)
-            if segments.last?.key != key { segments.append((i, key)) }
-        }
-
-        var instructions: [AVVideoCompositionInstructionProtocol] = []
-        for (index, segment) in segments.enumerated() {
-            let start = CMTime(value: CMTimeValue(segment.start) * step, timescale: 600)
-            let end = index + 1 < segments.count
-                ? CMTime(value: CMTimeValue(segments[index + 1].start) * step, timescale: 600)
-                : duration
-            guard end > start else { continue }
-
-            let layer = AVMutableVideoCompositionLayerInstruction(assetTrack: track)
-            layer.setTransform(
-                layerTransform(segment.key, preferred: preferred, size: renderSize,
-                               outputScale: finalSize.width / max(renderSize.width, 1)),
-                at: .zero
-            )
-            if segment.key.flash > 0 { layer.setOpacity(Float(1 - segment.key.flash), at: .zero) }
-            let instruction = AVMutableVideoCompositionInstruction()
-            instruction.backgroundColor = CGColor(gray: 1, alpha: 1)   // le flash révèle ce fond blanc
-            instruction.timeRange = CMTimeRange(start: start, end: end)
-            instruction.layerInstructions = [layer]
-            instructions.append(instruction)
-        }
-
+        let instruction = VYROInstruction(
+            timeRange: CMTimeRange(start: .zero, duration: duration),
+            trackID: track.trackID,
+            orientation: FrameRenderer.orientation(for: preferred),
+            baseSize: renderSize,
+            finalSize: finalSize,
+            effects: plan.effects,
+            stabilization: plan.stabilization,
+            timeMap: timeMap,
+            motionBlur: plan.motionBlur
+        )
         let composition = AVMutableVideoComposition()
         composition.renderSize = finalSize
         let fps = frameRate > 1 ? min(Int(frameRate.rounded()), 60) : 30
         composition.frameDuration = CMTime(value: 1, timescale: CMTimeScale(fps))
-        composition.instructions = instructions
+        composition.instructions = [instruction]
+        composition.customVideoCompositorClass = VYROCompositor.self
         return composition
-    }
-
-    /// Orientation d'origine, puis zoom autour du centre, puis décalage (fractions de l'image).
-    private static func layerTransform(_ key: FrameKey,
-                                       preferred: CGAffineTransform,
-                                       size: CGSize,
-                                       outputScale: CGFloat = 1) -> CGAffineTransform {
-        let w = size.width
-        let h = size.height
-        let s = CGFloat(key.scale)
-        var t = preferred
-        t = t.concatenating(CGAffineTransform(translationX: -w / 2, y: -h / 2))
-        t = t.concatenating(CGAffineTransform(scaleX: s, y: s))
-        t = t.concatenating(CGAffineTransform(translationX: w / 2 + CGFloat(key.dx) * w,
-                                              y: h / 2 + CGFloat(key.dy) * h))
-        if outputScale != 1 { t = t.concatenating(CGAffineTransform(scaleX: outputScale, y: outputScale)) }
-        return t
     }
 
     // MARK: Export
