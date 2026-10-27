@@ -71,4 +71,4 @@ Limites connues : un seul clip par montage, effets positionnés en temps de mont
 ### Texte et sous-titres
 - Outil Texte : plusieurs textes, début et durée, taille, hauteur, 4 styles (simple, contour, fond, néon), 6 couleurs, animation (pop, fondu).
 - Outil Look : étalonnage (presets Néon, Cinéma, Sombre, Vif, Rétro + réglages).
-- Limites connues : pas encore de glisser-déposer des textes sur la timeline ni de police au choix.
+- Les textes ont leur piste sur la timeline (toucher, glisser) et 6 polices au choix.

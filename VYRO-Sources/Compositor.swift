@@ -318,10 +318,26 @@ enum TextRenderer {
     private static var cache: [String: CIImage] = [:]
     private static let lock = NSLock()
 
+    private static func font(_ index: Int, size: CGFloat) -> UIFont {
+        func design(_ d: UIFontDescriptor.SystemDesign) -> UIFont {
+            let base = UIFont.systemFont(ofSize: size, weight: .heavy)
+            if let descriptor = base.fontDescriptor.withDesign(d) { return UIFont(descriptor: descriptor, size: size) }
+            return base
+        }
+        switch index {
+        case 1: return design(.rounded)
+        case 2: return design(.serif)
+        case 3: return design(.monospaced)
+        case 4: return UIFont(name: "AvenirNextCondensed-Heavy", size: size) ?? design(.default)
+        case 5: return UIFont(name: "Futura-CondensedExtraBold", size: size) ?? design(.default)
+        default: return UIFont.systemFont(ofSize: size, weight: .heavy)
+        }
+    }
+
     static func image(for overlay: TextOverlay, canvasWidth: CGFloat) -> CIImage? {
         guard !overlay.text.isEmpty else { return nil }
         let key = [overlay.text, String(overlay.size), String(overlay.style),
-                   String(overlay.colorIndex), String(Int(canvasWidth))].joined(separator: "|")
+                   String(overlay.colorIndex), String(overlay.font ?? 0), String(Int(canvasWidth))].joined(separator: "|")
         lock.lock()
         if let hit = cache[key] { lock.unlock(); return hit }
         lock.unlock()
@@ -332,7 +348,7 @@ enum TextRenderer {
         let paragraph = NSMutableParagraphStyle()
         paragraph.alignment = .center
         var attributes: [NSAttributedString.Key: Any] = [
-            .font: UIFont.systemFont(ofSize: fontSize, weight: .heavy),
+            .font: font(overlay.font ?? 0, size: fontSize),
             .foregroundColor: color,
             .paragraphStyle: paragraph
         ]

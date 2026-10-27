@@ -30,6 +30,10 @@ struct EditorView: View {
                 EditorTimeline(vm: vm, onSelectEffect: { id in
                     panel = nil
                     vm.selectEffect(id: id)
+                }, onSelectText: { id in
+                    vm.selectedEffectID = nil
+                    panel = .text
+                    vm.selectText(id: id)
                 })
                 .padding(.horizontal, 12)
                 .padding(.top, 8)
@@ -614,6 +618,13 @@ struct EditorView: View {
                           range: 0.05...0.95, display: String(format: "%.0f %%", (1 - item.y) * 100))
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
+                        ForEach(Array(TextOverlay.fontNames.enumerated()), id: \.offset) { index, name in
+                            chip(name, selected: (item.font ?? 0) == index, tint: .mint) { vm.updateText(id: id) { $0.font = index } }
+                        }
+                    }
+                }
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
                         ForEach(Array(TextOverlay.styleNames.enumerated()), id: \.offset) { index, name in
                             chip(name, selected: item.style == index) { vm.updateText(id: id) { $0.style = index } }
                         }
@@ -808,6 +819,7 @@ struct EditorView: View {
 struct EditorTimeline: View {
     @ObservedObject var vm: EditorViewModel
     var onSelectEffect: (UUID) -> Void
+    var onSelectText: (UUID) -> Void
 
     private let laneHeight: CGFloat = 22
     private let laneSpacing: CGFloat = 4
@@ -825,6 +837,7 @@ struct EditorTimeline: View {
                     effectLane([.glitch], color: .pink, icon: "square.stack.3d.down.right", width: width, total: total)
                     effectLane([.flash, .glow], color: Color(white: 0.85), icon: "bolt.fill", width: width, total: total)
                     speedLane(width: width, total: total)
+                    textLane(width: width, total: total)
                 }
                 .padding(.vertical, 8)
 
@@ -854,7 +867,7 @@ struct EditorTimeline: View {
                     .onEnded { _ in vm.isScrubbing = false }
             )
         }
-        .frame(height: laneHeight * 5 + laneSpacing * 4 + 16)
+        .frame(height: laneHeight * 6 + laneSpacing * 5 + 16)
     }
 
     private func effectLane(_ types: [EffectModel.EffectType], color: Color, icon: String, width: CGFloat, total: Double) -> some View {
@@ -873,6 +886,28 @@ struct EditorTimeline: View {
                     selected: effect.id == vm.selectedEffectID,
                     onSelect: { onSelectEffect(effect.id) },
                     onMove: { newStart in vm.updateEffect(id: effect.id) { $0.start = vm.snap(newStart) } }
+                )
+            }
+        }
+        .frame(height: laneHeight)
+        .clipped()
+    }
+
+    private func textLane(width: CGFloat, total: Double) -> some View {
+        ZStack(alignment: .leading) {
+            RoundedRectangle(cornerRadius: 5).fill(Color.white.opacity(0.04))
+            Image(systemName: "textformat")
+                .font(.system(size: 10))
+                .foregroundColor(Color.white.opacity(0.4))
+                .padding(.leading, 6)
+            ForEach(vm.texts) { item in
+                TextBlock(
+                    item: item,
+                    total: total,
+                    width: width,
+                    selected: item.id == vm.selectedTextID,
+                    onSelect: { onSelectText(item.id) },
+                    onMove: { newStart in vm.updateText(id: item.id) { $0.start = vm.snap(newStart) } }
                 )
             }
         }
@@ -912,6 +947,44 @@ struct EditorTimeline: View {
         }
         .frame(height: laneHeight)
         .clipped()
+    }
+}
+
+/// Bloc de texte sur la timeline : toucher pour régler, glisser pour déplacer.
+struct TextBlock: View {
+    let item: TextOverlay
+    let total: Double
+    let width: CGFloat
+    let selected: Bool
+    let onSelect: () -> Void
+    let onMove: (Double) -> Void
+
+    @State private var dragX: CGFloat = 0
+
+    var body: some View {
+        let blockWidth = max(CGFloat(item.duration / total) * width, 24)
+        RoundedRectangle(cornerRadius: 6)
+            .fill(Color.white.opacity(selected ? 0.95 : 0.6))
+            .overlay(
+                Text(item.text)
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(.black)
+                    .lineLimit(1)
+                    .padding(.horizontal, 4)
+            )
+            .frame(width: blockWidth, height: 18)
+            .offset(x: CGFloat(item.start / total) * width + dragX)
+            .gesture(
+                DragGesture(minimumDistance: 4)
+                    .onChanged { dragX = $0.translation.width }
+                    .onEnded { value in
+                        let newStart = item.start + Double(value.translation.width / width) * total
+                        dragX = 0
+                        onMove(min(max(newStart, 0), max(total - item.duration, 0)))
+                        onSelect()
+                    }
+            )
+            .onTapGesture(perform: onSelect)
     }
 }
 

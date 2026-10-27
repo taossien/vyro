@@ -87,6 +87,8 @@ struct TextOverlay: Codable, Identifiable, Equatable {
     var style: Int = 1
     /// 0 aucune, 1 pop, 2 fondu.
     var animation: Int = 1
+    /// Police (indice dans fontNames), nil = la première.
+    var font: Int?
 
     var end: Double { start + duration }
 
@@ -94,6 +96,7 @@ struct TextOverlay: Codable, Identifiable, Equatable {
         ("Blanc", 1, 1, 1), ("Jaune", 1, 0.92, 0.2), ("Cyan", 0.2, 0.9, 1),
         ("Rose", 1, 0.3, 0.7), ("Menthe", 0.3, 1, 0.7), ("Orange", 1, 0.55, 0.15)
     ]
+    static let fontNames = ["Impact", "Arrondi", "Serif", "Mono", "Condensé", "Futura"]
     static let styleNames = ["Simple", "Contour", "Fond", "Néon"]
     static let animationNames = ["Aucune", "Pop", "Fondu"]
 }
