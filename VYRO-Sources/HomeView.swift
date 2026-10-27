@@ -8,6 +8,8 @@ import SwiftUI
 struct HomeView: View {
     @State private var projects: [ProjectModel] = []
     @State private var showNewProject = false
+    @State private var renaming: ProjectModel?
+    @State private var newName = ""
 
     var body: some View {
         NavigationStack {
@@ -42,6 +44,20 @@ struct HomeView: View {
                                 }
                             }
                             .listRowBackground(Theme.surface)
+                            .contextMenu {
+                                Button {
+                                    newName = project.name
+                                    renaming = project
+                                } label: { Label("Renommer", systemImage: "pencil") }
+                                Button {
+                                    duplicate(project)
+                                } label: { Label("Dupliquer", systemImage: "plus.square.on.square") }
+                                Button(role: .destructive) {
+                                    if let index = projects.firstIndex(where: { $0.id == project.id }) {
+                                        deleteProjects(at: IndexSet(integer: index))
+                                    }
+                                } label: { Label("Supprimer", systemImage: "trash") }
+                            }
                         }
                         .onDelete(perform: deleteProjects)
                     }
@@ -67,7 +83,35 @@ struct HomeView: View {
             .onAppear {
                 projects = ProjectStore.loadAll()
             }
+            .alert("Renommer le projet", isPresented: Binding(
+                get: { renaming != nil },
+                set: { if !$0 { renaming = nil } }
+            )) {
+                TextField("Nom", text: $newName)
+                Button("Annuler", role: .cancel) { renaming = nil }
+                Button("OK") { applyRename() }
+            }
         }
+    }
+
+    private func applyRename() {
+        let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard var project = renaming, !trimmed.isEmpty else { renaming = nil; return }
+        project.name = trimmed
+        project.modificationDate = Date()
+        try? ProjectStore.save(project)
+        renaming = nil
+        projects = ProjectStore.loadAll()
+    }
+
+    private func duplicate(_ project: ProjectModel) {
+        var copy = project
+        copy.id = UUID()
+        copy.name = project.name + " (copie)"
+        copy.creationDate = Date()
+        copy.modificationDate = Date()
+        try? ProjectStore.save(copy)
+        projects = ProjectStore.loadAll()
     }
 
     private func deleteProjects(at offsets: IndexSet) {

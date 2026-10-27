@@ -143,29 +143,29 @@ enum EffectEngine {
             case .zoom:
                 result.scale += (effect.intensity - 1) * zoomEnvelope(u, curve: effect.curve)
             case .shake:
-                let decay = (1 - u) * (1 - u)
+                let falloff = decay(u, curve: effect.curve)
                 let seed = UInt32(truncatingIfNeeded: Int(effect.parameters["seed"] ?? 1))
                 let x = time * shakeFrequency
-                result.dx += effect.intensity * decay * noise(seed: seed, x: x, channel: 0)
-                result.dy += effect.intensity * decay * noise(seed: seed, x: x, channel: 1)
-                result.margin += 2 * effect.intensity * decay
-                result.rgbSplit += effect.intensity * 0.15 * decay
+                result.dx += effect.intensity * falloff * noise(seed: seed, x: x, channel: 0)
+                result.dy += effect.intensity * falloff * noise(seed: seed, x: x, channel: 1)
+                result.margin += 2 * effect.intensity * falloff
+                result.rgbSplit += effect.intensity * 0.15 * falloff
             case .glitch:
                 let seed = UInt32(truncatingIfNeeded: Int(effect.parameters["seed"] ?? 1))
                 let step = Int(floor(time * glitchRate))
                 // Une saccade sur deux environ : le reste du temps l'image est nette.
                 let active = hash(seed: seed, index: step, channel: 2) > -0.1
                 if active {
-                    let decay = 1 - 0.6 * u
-                    result.dx += effect.intensity * decay * hash(seed: seed, index: step, channel: 0)
-                    result.dy += effect.intensity * 0.25 * decay * hash(seed: seed, index: step, channel: 1)
-                    result.margin += 2 * effect.intensity * decay
-                    result.rgbSplit += effect.intensity * 0.35 * decay
+                    let falloff = effect.curve == 0 ? 1 - 0.6 * u : decay(u, curve: effect.curve)
+                    result.dx += effect.intensity * falloff * hash(seed: seed, index: step, channel: 0)
+                    result.dy += effect.intensity * 0.25 * falloff * hash(seed: seed, index: step, channel: 1)
+                    result.margin += 2 * effect.intensity * falloff
+                    result.rgbSplit += effect.intensity * 0.35 * falloff
                 }
             case .glow:
-                result.glow += effect.intensity * (1 - u) * (1 - u)
+                result.glow += effect.intensity * decay(u, curve: effect.curve)
             case .flash:
-                result.flash = min(1, result.flash + effect.intensity * (1 - u) * (1 - u))
+                result.flash = min(1, result.flash + effect.intensity * decay(u, curve: effect.curve))
             default:
                 break
             }
@@ -173,8 +173,24 @@ enum EffectEngine {
         return result
     }
 
+    /// Retombée d'un effet qui démarre à son maximum : 0 punch, 1 doux (monte puis redescend),
+    /// 2 claque (chute très rapide), 3 linéaire.
+    static func decay(_ u: Double, curve: Int) -> Double {
+        switch curve {
+        case 1:
+            let k = u < 0.5 ? u * 2 : (1 - u) * 2
+            return k * k * (3 - 2 * k)
+        case 2: return pow(1 - u, 4)
+        case 3: return 1 - u
+        default: return (1 - u) * (1 - u)
+        }
+    }
+
     /// Montée rapide (25 % du temps) puis retour doux : l'effet "punch" des gaming edits.
     static func zoomEnvelope(_ u: Double, curve: Int = 0) -> Double {
+        if curve == 3 {                                   // linéaire : triangle
+            return u < 0.5 ? u * 2 : (1 - u) * 2
+        }
         if curve == 1 {                                   // doux : montée et descente lissées
             let k = u < 0.5 ? u * 2 : (1 - u) * 2
             return k * k * (3 - 2 * k)

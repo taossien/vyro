@@ -335,15 +335,6 @@ struct EditorView: View {
                     range: 1.05...2.0,
                     display: String(format: "x%.2f", effect.intensity)
                 )
-                Picker("Courbe", selection: Binding(
-                    get: { effect.curve },
-                    set: { value in vm.updateEffect(id: id) { $0.curve = value } }
-                )) {
-                    Text("Punch").tag(0)
-                    Text("Doux").tag(1)
-                    Text("Claque").tag(2)
-                }
-                .pickerStyle(.segmented)
             } else if effect.type == .glow {
                 sliderRow(
                     label: "Halo",
@@ -366,6 +357,16 @@ struct EditorView: View {
                     display: String(format: "%.1f %%", effect.intensity * 100)
                 )
             }
+            Picker("Courbe", selection: Binding(
+                get: { effect.curve },
+                set: { value in vm.updateEffect(id: id) { $0.curve = value } }
+            )) {
+                Text("Punch").tag(0)
+                Text("Doux").tag(1)
+                Text("Claque").tag(2)
+                Text("Linéaire").tag(3)
+            }
+            .pickerStyle(.segmented)
             HStack(spacing: 10) {
                 actionButton("Dupliquer", icon: "plus.square.on.square", tint: Theme.accent) {
                     vm.duplicateEffect(id: id)
