@@ -36,7 +36,7 @@ struct StylePreset: Identifiable {
         StylePreset(
             id: "cinema", name: "Cinéma", icon: "film",
             blurb: "Doux et sombre, zooms lents, passages par le noir",
-            grade: ColorGrade.presets[2].grade, motionBlur: 0.8,
+            grade: ColorGrade.presets[6].grade, motionBlur: 0.8,
             transition: CutTransition(type: 4, duration: 0.5), beatEvery: 4, sound: .bass,
             effects: { time, _, room in
                 var zoom = EffectModel.zoom(start: time, duration: min(0.9, room), peak: 1.12)

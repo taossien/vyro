@@ -132,6 +132,12 @@ struct ColorGrade: Codable, Equatable {
     var saturation: Double = 1     // 0...2
     var warmth: Double = 0         // -1 (froid) ... 1 (chaud)
     var vignette: Double = 0       // 0...1
+    /// Finitions « cinéma » (optionnelles : les anciens projets restent lisibles).
+    var tint: Double?              // 0...1 ombres bleu-vert, lumières orangées
+    var fade: Double?              // 0...1 noirs relevés, façon pellicule
+    var grain: Double?             // 0...1 grain animé
+    var bloom: Double?             // 0...1 halo sur les lumières
+    var bars: Double?              // 0...0.2 bandes noires (fraction de la hauteur, haut et bas)
 
     static let neutral = ColorGrade()
     var isNeutral: Bool { self == ColorGrade.neutral }
@@ -142,7 +148,9 @@ struct ColorGrade: Codable, Equatable {
         ("Cinéma", ColorGrade(exposure: -0.1, contrast: 1.15, saturation: 0.9, warmth: 0.2, vignette: 0.4)),
         ("Sombre", ColorGrade(exposure: -0.4, contrast: 1.3, saturation: 1.1, warmth: -0.1, vignette: 0.5)),
         ("Vif", ColorGrade(exposure: 0.05, contrast: 1.15, saturation: 1.6, warmth: 0, vignette: 0)),
-        ("Rétro", ColorGrade(exposure: 0, contrast: 1.1, saturation: 0.7, warmth: 0.5, vignette: 0.3))
+        ("Rétro", ColorGrade(exposure: 0, contrast: 1.1, saturation: 0.7, warmth: 0.5, vignette: 0.3)),
+        ("Cinématique", ColorGrade(exposure: -0.05, contrast: 1.2, saturation: 0.95, warmth: 0.1, vignette: 0.45,
+                                   tint: 0.7, fade: 0.35, grain: 0.12, bloom: 0.3))
     ]
 }
 

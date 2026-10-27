@@ -272,7 +272,7 @@ enum FrameRenderer {
         }
 
         if let grade = instruction.grade, !grade.isNeutral {
-            image = applyGrade(image, grade, rect: rect)
+            image = applyGrade(image, grade, rect: rect, time: time)
         }
 
         if now.glow > 0.02 {
@@ -355,7 +355,7 @@ enum FrameRenderer {
     }
 
     /// Exposition, contraste, saturation, chaleur (gains rouge/bleu), vignette.
-    private static func applyGrade(_ input: CIImage, _ g: ColorGrade, rect: CGRect) -> CIImage {
+    private static func applyGrade(_ input: CIImage, _ g: ColorGrade, rect: CGRect, time: Double) -> CIImage {
         var image = input
         if abs(g.exposure) > 0.001 {
             image = image.applyingFilter("CIExposureAdjust", parameters: [kCIInputEVKey: g.exposure])
@@ -373,11 +373,58 @@ enum FrameRenderer {
                 "inputAVector": CIVector(x: 0, y: 0, z: 0, w: 1)
             ])
         }
+        // Teinte cinéma + noirs relevés : un seul calcul (gain et décalage par canal).
+        let tint = CGFloat(g.tint ?? 0), fade = CGFloat(g.fade ?? 0)
+        if tint > 0.001 || fade > 0.001 {
+            let lift = 0.06 * fade
+            let scale = 1 - lift
+            image = image.applyingFilter("CIColorMatrix", parameters: [
+                "inputRVector": CIVector(x: scale * (1 + 0.10 * tint), y: 0, z: 0, w: 0),
+                "inputGVector": CIVector(x: 0, y: scale * (1 + 0.01 * tint), z: 0, w: 0),
+                "inputBVector": CIVector(x: 0, y: 0, z: scale * (1 - 0.10 * tint), w: 0),
+                "inputAVector": CIVector(x: 0, y: 0, z: 0, w: 1),
+                "inputBiasVector": CIVector(x: lift - 0.035 * tint, y: lift + 0.012 * tint, z: lift + 0.045 * tint, w: 0)
+            ])
+        }
+        if let bloom = g.bloom, bloom > 0.01 {
+            image = image.clampedToExtent()
+                .applyingFilter("CIBloom", parameters: [
+                    kCIInputRadiusKey: 14 * rect.width / 1080,
+                    kCIInputIntensityKey: bloom * 0.6
+                ])
+                .cropped(to: rect)
+        }
         if g.vignette > 0.01 {
             image = image.applyingFilter("CIVignette", parameters: [
                 kCIInputIntensityKey: g.vignette * 1.5,
                 kCIInputRadiusKey: 1.5
             ])
+        }
+        if let grain = g.grain, grain > 0.01, let noise = CIFilter(name: "CIRandomGenerator")?.outputImage {
+            // Le grain change à chaque image : décalage différent selon le numéro d'image (24 par seconde).
+            let frame = floor(time * 24)
+            let ox = (sin(frame * 12.9898) * 43758.5453).truncatingRemainder(dividingBy: 1) * 997
+            let oy = (sin(frame * 78.233) * 12345.6789).truncatingRemainder(dividingBy: 1) * 997
+            let a = CGFloat(grain) * 0.35
+            let mono = noise
+                .transformed(by: CGAffineTransform(translationX: CGFloat(ox), y: CGFloat(oy)))
+                .applyingFilter("CIColorMatrix", parameters: [
+                    "inputRVector": CIVector(x: a / 3, y: a / 3, z: a / 3, w: 0),
+                    "inputGVector": CIVector(x: a / 3, y: a / 3, z: a / 3, w: 0),
+                    "inputBVector": CIVector(x: a / 3, y: a / 3, z: a / 3, w: 0),
+                    "inputAVector": CIVector(x: 0, y: 0, z: 0, w: 0),
+                    "inputBiasVector": CIVector(x: 0.5 - a / 2, y: 0.5 - a / 2, z: 0.5 - a / 2, w: 1)
+                ])
+                .cropped(to: rect)
+            image = mono.applyingFilter("CISoftLightBlendMode", parameters: [kCIInputBackgroundImageKey: image])
+                .cropped(to: rect)
+        }
+        if let bars = g.bars, bars > 0.005 {
+            let height = rect.height * CGFloat(bars)
+            let black = CIImage(color: .black)
+            let top = black.cropped(to: CGRect(x: rect.minX, y: rect.maxY - height, width: rect.width, height: height))
+            let bottom = black.cropped(to: CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: height))
+            image = top.composited(over: bottom.composited(over: image))
         }
         return image.cropped(to: rect)
     }

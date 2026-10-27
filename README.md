@@ -123,3 +123,7 @@ Flash, Zoom, Glitch, Flou, Noir, Whip, puis Spin, Glissé, Strobe, Flash zoom, T
 
 - **Icône** : `Assets.xcassets/AppIcon.appiconset/AppIcon.png` (V néon avec étincelle), branchée via `ASSETCATALOG_COMPILER_APPICON_NAME`.
 - **Égalisation du son d'origine** : avec plusieurs clips, le niveau RMS de chacun est mesuré (20 premières secondes) et ramené vers la médiane (gain borné 0,6 à 1,6). Automatique ; non écouté sur appareil.
+
+## Look Cinématique
+
+Nouveaux réglages d'étalonnage (tous optionnels, anciens projets inchangés) : **Teinte ciné** (ombres bleu-vert, lumières orangées), **Pellicule** (noirs relevés), **Grain** animé, **Halo** sur les lumières, **Bandes** noires. Préréglage « Cinématique » dans Look (utilisé par le style Cinéma). Le grain est volontairement discret (12 %) : à valider sur iPhone.

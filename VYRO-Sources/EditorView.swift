@@ -1081,6 +1081,21 @@ struct EditorView: View {
             sliderRow(label: "Vignette",
                       value: Binding(get: { vm.colorGrade.vignette }, set: { var g = vm.colorGrade; g.vignette = $0; vm.setColorGrade(g) }),
                       range: 0...1, display: String(format: "%.0f %%", vm.colorGrade.vignette * 100))
+            sliderRow(label: "Teinte ciné",
+                      value: Binding(get: { vm.colorGrade.tint ?? 0 }, set: { var g = vm.colorGrade; g.tint = $0; vm.setColorGrade(g) }),
+                      range: 0...1, display: String(format: "%.0f %%", (vm.colorGrade.tint ?? 0) * 100))
+            sliderRow(label: "Pellicule",
+                      value: Binding(get: { vm.colorGrade.fade ?? 0 }, set: { var g = vm.colorGrade; g.fade = $0; vm.setColorGrade(g) }),
+                      range: 0...1, display: String(format: "%.0f %%", (vm.colorGrade.fade ?? 0) * 100))
+            sliderRow(label: "Grain",
+                      value: Binding(get: { vm.colorGrade.grain ?? 0 }, set: { var g = vm.colorGrade; g.grain = $0; vm.setColorGrade(g) }),
+                      range: 0...1, display: String(format: "%.0f %%", (vm.colorGrade.grain ?? 0) * 100))
+            sliderRow(label: "Halo",
+                      value: Binding(get: { vm.colorGrade.bloom ?? 0 }, set: { var g = vm.colorGrade; g.bloom = $0; vm.setColorGrade(g) }),
+                      range: 0...1, display: String(format: "%.0f %%", (vm.colorGrade.bloom ?? 0) * 100))
+            sliderRow(label: "Bandes",
+                      value: Binding(get: { vm.colorGrade.bars ?? 0 }, set: { var g = vm.colorGrade; g.bars = $0; vm.setColorGrade(g) }),
+                      range: 0...0.2, display: String(format: "%.0f %%", (vm.colorGrade.bars ?? 0) * 500))
         }
     }
 
