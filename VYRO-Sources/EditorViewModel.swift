@@ -989,6 +989,38 @@ final class EditorViewModel: ObservableObject {
         addEffect(.zoom(start: playhead))
     }
 
+    /// Smash : zoom très rapide qui claque, avec secousse et aberration.
+    func addSmash() {
+        guard hasClip, duration > 0 else { return }
+        let start = min(max(snap(playhead), 0), max(duration - 0.1, 0))
+        let room = max(duration - start, 0.1)
+        mutateClip { clip in
+            var zoom = EffectModel.zoom(start: start, duration: min(0.3, room), peak: 1.7)
+            zoom.curve = 2
+            clip.effects.append(zoom)
+            clip.effects.append(.shake(start: start, duration: min(0.25, room), amplitude: 0.02))
+            clip.effects.append(.chroma(start: start, duration: min(0.3, room)))
+        }
+        selectedEffectID = nil
+        scheduleRebuild()
+    }
+
+    /// Hole : plongée lente dans l'image, halo et aberration qui montent.
+    func addHole() {
+        guard hasClip, duration > 0 else { return }
+        let start = min(max(snap(playhead), 0), max(duration - 0.1, 0))
+        let room = max(duration - start, 0.1)
+        mutateClip { clip in
+            var zoom = EffectModel.zoom(start: start, duration: min(1.1, room), peak: 2.1)
+            zoom.curve = 1
+            clip.effects.append(zoom)
+            clip.effects.append(.glow(start: start, duration: min(1.1, room), strength: 0.7))
+            clip.effects.append(.chroma(start: start, duration: min(1.1, room)))
+        }
+        selectedEffectID = nil
+        scheduleRebuild()
+    }
+
     func addFlash() {
         addEffect(.flash(start: playhead))
     }
@@ -1123,6 +1155,16 @@ final class EditorViewModel: ObservableObject {
     /// Accélération courte : normal, burst rapide, retour à la normale.
     func addSpeedBurst() {
         addRamp([(-0.2, 1.0), (0, 2.5), (0.6, 2.5), (0.8, 1.0)])
+    }
+
+    /// Hero time : accélère, ralenti net sur l'impact, repart vite.
+    func addHeroTime() {
+        addRamp([(-0.5, 1.0), (-0.3, 2.2), (-0.05, 0.2), (0.6, 0.2), (0.9, 1.8), (1.2, 1.0)])
+    }
+
+    /// Souffle long : ralenti doux qui s'installe puis revient.
+    func addSoftSlow() {
+        addRamp([(-0.4, 1.0), (0, 0.5), (1.0, 0.5), (1.4, 1.0)])
     }
 
     private func addRamp(_ shape: [(offset: Double, speed: Double)]) {

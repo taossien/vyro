@@ -97,3 +97,8 @@ Limites connues : un seul clip par montage, effets positionnés en temps de mont
 - **Figer l'image** (bouton pause dans la barre des clips) : insère un clip « hold » de 0,8 s sur l'image sous la tête de lecture ; tout ce qui suit (effets, textes, images clés, sons) est décalé.
 - **Rejouer au ralenti** (bouton flèche circulaire) : rejoue les 0,5 s précédentes à 50 %, avec flash, petit zoom et whoosh.
 - Limite : tête de lecture à plus de 0,5 s du début du clip pour la rediffusion. Non testé sur iPhone.
+
+## Presets de zoom et de vitesse
+
+- **Smash** : zoom 1,7 en 0,3 s (courbe Claque) + secousse + aberration. **Hole** : plongée 2,1 sur 1,1 s (courbe Douce) + halo + aberration. Chaque effet reste modifiable.
+- Vitesse : **Hero time** (accélère, ralenti net x0,2 sur l'impact, repart) et **Ralenti doux** (x0,5 sur 1 s).

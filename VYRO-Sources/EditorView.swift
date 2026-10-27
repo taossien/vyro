@@ -268,6 +268,16 @@ struct EditorView: View {
                 panel = nil
                 vm.addZoom()
             }
+            toolButton("Smash", icon: "arrow.up.left.and.arrow.down.right", color: .red, active: false) {
+                haptic()
+                panel = nil
+                vm.addSmash()
+            }
+            toolButton("Hole", icon: "scope", color: .purple, active: false) {
+                haptic()
+                panel = nil
+                vm.addHole()
+            }
             toolButton("Shake", icon: "waveform.path", color: Theme.accentBlue, active: vm.selectedEffect?.type == .shake) {
                 haptic()
                 panel = nil
@@ -699,6 +709,10 @@ struct EditorView: View {
             HStack(spacing: 8) {
                 rampButton("Slow-mo punch", icon: "tortoise.fill") { vm.addSlowMoPunch() }
                 rampButton("Burst x2.5", icon: "hare.fill") { vm.addSpeedBurst() }
+            }
+            HStack(spacing: 8) {
+                rampButton("Hero time", icon: "bolt.horizontal.fill") { vm.addHeroTime() }
+                rampButton("Ralenti doux", icon: "wind") { vm.addSoftSlow() }
             }
 
             if vm.speedPoints.isEmpty {
