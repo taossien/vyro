@@ -432,6 +432,27 @@ final class EditorViewModel: ObservableObject {
         addEffect(.flash(start: playhead))
     }
 
+    /// Un seul geste : zoom, secousse, flash et halo sur l'impact.
+    func addImpact() {
+        guard hasClip, duration > 0 else { return }
+        let start = min(max(snap(playhead), 0), max(duration - 0.1, 0))
+        let room = max(duration - start, 0.1)
+        mutateClip { clip in
+            var zoom = EffectModel.zoom(start: start, duration: min(0.55, room), peak: 1.35)
+            zoom.curve = 2
+            clip.effects.append(zoom)
+            clip.effects.append(.shake(start: start, duration: min(0.4, room), amplitude: 0.015))
+            clip.effects.append(.flash(start: start, duration: min(0.15, room), strength: 0.3))
+            clip.effects.append(.glow(start: start, duration: min(0.5, room), strength: 0.6))
+        }
+        selectedEffectID = nil
+        scheduleRebuild()
+    }
+
+    func addGlow() {
+        addEffect(.glow(start: playhead))
+    }
+
     func addGlitch() {
         addEffect(.glitch(start: playhead))
     }

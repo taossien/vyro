@@ -175,6 +175,11 @@ struct EditorView: View {
     private var toolbar: some View {
         ScrollView(.horizontal, showsIndicators: false) {
         HStack(spacing: 0) {
+            toolButton("Impact", icon: "burst.fill", color: .yellow, active: false) {
+                haptic()
+                panel = nil
+                vm.addImpact()
+            }
             toolButton("Zoom", icon: "plus.magnifyingglass", color: Theme.accent, active: vm.selectedEffect?.type == .zoom) {
                 haptic()
                 panel = nil
@@ -194,6 +199,11 @@ struct EditorView: View {
                 haptic()
                 panel = nil
                 vm.addFlash()
+            }
+            toolButton("Halo", icon: "sun.max.fill", color: .orange, active: vm.selectedEffect?.type == .glow) {
+                haptic()
+                panel = nil
+                vm.addGlow()
             }
             toolButton("Couper", icon: "scissors", color: .orange, active: panel == .trim || vm.isTrimmed) {
                 vm.selectedEffectID = nil
@@ -334,6 +344,13 @@ struct EditorView: View {
                     Text("Claque").tag(2)
                 }
                 .pickerStyle(.segmented)
+            } else if effect.type == .glow {
+                sliderRow(
+                    label: "Halo",
+                    value: binding(id, get: { $0.intensity }, set: { $0.intensity = $1 }),
+                    range: 0.2...2.0,
+                    display: String(format: "%.0f %%", effect.intensity * 100)
+                )
             } else if effect.type == .flash {
                 sliderRow(
                     label: "Blanc",
@@ -641,10 +658,10 @@ struct EditorTimeline: View {
                 RoundedRectangle(cornerRadius: 10).fill(Theme.surface)
 
                 VStack(spacing: laneSpacing) {
-                    effectLane(.zoom, color: Theme.accent, icon: "plus.magnifyingglass", width: width, total: total)
-                    effectLane(.shake, color: Theme.accentBlue, icon: "waveform.path", width: width, total: total)
-                    effectLane(.glitch, color: .pink, icon: "square.stack.3d.down.right", width: width, total: total)
-                    effectLane(.flash, color: Color(white: 0.85), icon: "bolt.fill", width: width, total: total)
+                    effectLane([.zoom], color: Theme.accent, icon: "plus.magnifyingglass", width: width, total: total)
+                    effectLane([.shake], color: Theme.accentBlue, icon: "waveform.path", width: width, total: total)
+                    effectLane([.glitch], color: .pink, icon: "square.stack.3d.down.right", width: width, total: total)
+                    effectLane([.flash, .glow], color: Color(white: 0.85), icon: "bolt.fill", width: width, total: total)
                     speedLane(width: width, total: total)
                 }
                 .padding(.vertical, 8)
@@ -678,14 +695,14 @@ struct EditorTimeline: View {
         .frame(height: laneHeight * 5 + laneSpacing * 4 + 16)
     }
 
-    private func effectLane(_ type: EffectModel.EffectType, color: Color, icon: String, width: CGFloat, total: Double) -> some View {
+    private func effectLane(_ types: [EffectModel.EffectType], color: Color, icon: String, width: CGFloat, total: Double) -> some View {
         ZStack(alignment: .leading) {
             RoundedRectangle(cornerRadius: 5).fill(Color.white.opacity(0.04))
             Image(systemName: icon)
                 .font(.system(size: 10))
                 .foregroundColor(color.opacity(0.5))
                 .padding(.leading, 6)
-            ForEach(vm.effects.filter { $0.type == type }) { effect in
+            ForEach(vm.effects.filter { types.contains($0.type) }) { effect in
                 EffectBlock(
                     effect: effect,
                     total: total,

@@ -105,6 +105,7 @@ enum FrameRenderer {
         var dy: Double
         var rgbSplit: Double
         var flash: Double
+        var glow: Double
     }
 
     static func orientation(for t: CGAffineTransform) -> CGImagePropertyOrientation {
@@ -127,7 +128,7 @@ enum FrameRenderer {
             dx += c.dx
             dy -= c.dy      // Vision : axe Y vers le haut ; calque : vers le bas
         }
-        return State(scale: scale, dx: dx, dy: dy, rgbSplit: fx.rgbSplit, flash: fx.flash)
+        return State(scale: scale, dx: dx, dy: dy, rgbSplit: fx.rgbSplit, flash: fx.flash, glow: fx.glow)
     }
 
     static func render(source: CIImage, time: Double, instruction: VYROInstruction) -> CIImage {
@@ -158,12 +159,12 @@ enum FrameRenderer {
                     .cropped(to: rect)
             }
             let ds = abs(b.scale - a.scale)
-            let amount = ds * Double(min(w, h)) * 0.5
+            let amount = ds * Double(min(w, h)) * 0.2
             if amount > 0.5 {
                 image = image.clampedToExtent()
                     .applyingFilter("CIZoomBlur", parameters: [
                         kCIInputCenterKey: CIVector(x: w / 2, y: h / 2),
-                        kCIInputAmountKey: min(amount, 60)
+                        kCIInputAmountKey: min(amount, 14)
                     ])
                     .cropped(to: rect)
             }
@@ -171,6 +172,15 @@ enum FrameRenderer {
 
         if now.rgbSplit > 0.0005 {
             image = rgbSplit(image, offset: CGFloat(now.rgbSplit) * w, rect: rect)
+        }
+
+        if now.glow > 0.02 {
+            image = image.clampedToExtent()
+                .applyingFilter("CIBloom", parameters: [
+                    kCIInputRadiusKey: 18 * w / 1080 * max(now.glow, 0.5),
+                    kCIInputIntensityKey: min(now.glow, 2) * 0.5
+                ])
+                .cropped(to: rect)
         }
 
         if now.flash > 0.002 {

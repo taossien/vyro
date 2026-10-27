@@ -48,6 +48,15 @@ extension EffectModel {
         )
     }
 
+    /// Halo lumineux (bloom) : intensité = force du halo, retombée progressive.
+    static func glow(start: Double, duration: Double = 0.5, strength: Double = 0.9) -> EffectModel {
+        EffectModel(
+            id: UUID(),
+            type: .glow,
+            parameters: ["start": start, "duration": duration, "intensity": strength]
+        )
+    }
+
     /// Courbe du zoom : 0 = punch, 1 = doux, 2 = claque (montée instantanée).
     var curve: Int {
         get { Int(parameters["curve"] ?? 0) }
@@ -74,7 +83,7 @@ extension EffectModel {
     }
 
     var intensity: Double {
-        get { parameters["intensity"] ?? (type == .zoom ? 1.4 : (type == .flash ? 0.8 : (type == .glitch ? 0.04 : 0.02))) }
+        get { parameters["intensity"] ?? (type == .zoom ? 1.4 : (type == .flash ? 0.8 : (type == .glitch ? 0.04 : (type == .glow ? 0.9 : 0.02)))) }
         set { parameters["intensity"] = newValue }
     }
 
@@ -86,6 +95,7 @@ extension EffectModel {
         case .shake: return "Shake"
         case .flash: return "Flash"
         case .glitch: return "Glitch"
+        case .glow: return "Halo"
         case .speed: return "Vitesse"
         }
     }
@@ -96,6 +106,7 @@ extension EffectModel {
         case .shake: return "waveform.path"
         case .flash: return "bolt.fill"
         case .glitch: return "square.stack.3d.down.right"
+        case .glow: return "sun.max.fill"
         case .speed: return "speedometer"
         }
     }
@@ -115,6 +126,8 @@ struct FrameTransform {
     var flash: Double = 0
     /// Séparation des couleurs (aberration chromatique), en fraction de la largeur.
     var rgbSplit: Double = 0
+    /// Force du halo lumineux (0 = aucun).
+    var glow: Double = 0
 }
 
 enum EffectEngine {
@@ -149,6 +162,8 @@ enum EffectEngine {
                     result.margin += 2 * effect.intensity * decay
                     result.rgbSplit += effect.intensity * 0.35 * decay
                 }
+            case .glow:
+                result.glow += effect.intensity * (1 - u) * (1 - u)
             case .flash:
                 result.flash = min(1, result.flash + effect.intensity * (1 - u) * (1 - u))
             default:

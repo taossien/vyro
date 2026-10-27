@@ -25,7 +25,7 @@ struct KeyframeModel: Codable, Identifiable, Equatable {
 
 struct EffectModel: Codable, Identifiable, Equatable {
     enum EffectType: String, Codable {
-        case zoom, shake, flash, glitch, speed
+        case zoom, shake, flash, glitch, speed, glow
     }
 
     var id: UUID
