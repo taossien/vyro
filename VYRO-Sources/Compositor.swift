@@ -209,10 +209,10 @@ enum FrameRenderer {
         let red = channel(1, 0, 0).transformed(by: CGAffineTransform(translationX: offset, y: 0)).clampedToExtent()
         let green = channel(0, 1, 0)
         let blue = channel(0, 0, 1).transformed(by: CGAffineTransform(translationX: -offset, y: 0)).clampedToExtent()
-        let rg = red.cropped(to: rect).applyingFilter("CIAdditionCompositing", parameters: [
+        let rg = red.cropped(to: rect).applyingFilter("CILightenBlendMode", parameters: [
             kCIInputBackgroundImageKey: green
         ])
-        return blue.cropped(to: rect).applyingFilter("CIAdditionCompositing", parameters: [
+        return blue.cropped(to: rect).applyingFilter("CILightenBlendMode", parameters: [
             kCIInputBackgroundImageKey: rg
         ]).cropped(to: rect)
     }
