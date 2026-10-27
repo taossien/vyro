@@ -7,11 +7,15 @@ import SwiftUI
 
 @main
 struct VYROApp: App {
+    @AppStorage("vyro.onboarded") private var onboarded = false
+
     var body: some Scene {
         WindowGroup {
-            HomeView()
-                .preferredColorScheme(.dark)
-                .tint(Theme.accent)
+            Group {
+                if onboarded { HomeView() } else { OnboardingView { onboarded = true } }
+            }
+            .preferredColorScheme(.dark)
+            .tint(Theme.accent)
         }
     }
 }

@@ -110,3 +110,11 @@ Option « Karaoké » dans les sous-titres automatiques : phrases de 4 mots, le 
 ## Transitions (15)
 
 Flash, Zoom, Glitch, Flou, Noir, Whip, puis Spin, Glissé, Strobe, Flash zoom, Tremble, Glitch+, Whip V, Punch, Roulis. Toutes sont calculées dans `FrameRenderer.state` (échelle, décalage, rotation, flou, flash), sans filtre supplémentaire.
+
+## Textes, export, son, partage, accueil
+
+- **Textes** : styles Carte, 3D, Glitch, Feu, Rétro (en plus de Simple, Contour, Fond, Néon) et animation « Mots » (les mots apparaissent un à un).
+- **Export** : nouveau préréglage « 1080p 60 i/s » (cadence forcée à 60, effets plus fluides, fichier plus lourd).
+- **Musique** : elle baisse automatiquement (45 %) pendant les sous-titres, donc la voix passe au premier plan.
+- **Styles partageables** (`StyleTemplate.swift`) : « Partager mon style » exporte effets, sons, look, flou et transition dans un fichier JSON ; « Importer un style » l'applique à un autre montage en étirant les temps à sa durée.
+- **Accueil** (`OnboardingView.swift`) : trois pages au premier lancement (clé `vyro.onboarded`).

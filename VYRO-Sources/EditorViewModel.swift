@@ -729,6 +729,14 @@ final class EditorViewModel: ObservableObject {
         scheduleRebuild()
     }
 
+    /// Pour StyleTemplate (autre fichier) : applique le changement puis reconstruit.
+    func mutateAllForTemplate(_ change: (inout [ClipModel]) -> Void) {
+        mutateAll(change)
+        appliedStyleID = nil
+        selectedEffectID = nil
+        scheduleRebuild()
+    }
+
     func clearStyle() {
         mutateAll { clips in
             clips[0].effects = []

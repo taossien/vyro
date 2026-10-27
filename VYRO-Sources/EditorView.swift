@@ -17,6 +17,8 @@ struct EditorView: View {
     enum ToolPanel { case speed, stabilization, trim, music, render, look, text, motion, transition, style, sounds }
     @AppStorage("vyro.advanced") private var advanced = false
     @State private var showFilePicker = false
+    @State private var showTemplatePicker = false
+    @State private var templateURL: URL?
     @State private var pickingMusic = true
 
     init(project: ProjectModel? = nil) {
@@ -536,11 +538,30 @@ struct EditorView: View {
                     }
                 }
             }
-            if vm.appliedStyleID != nil {
-                Button("Retirer le style") { haptic(); vm.clearStyle() }
-                    .font(.caption.weight(.semibold))
-                    .foregroundColor(.red)
+            HStack(spacing: 10) {
+                if let url = templateURL {
+                    ShareLink(item: url) {
+                        Label("Partager mon style", systemImage: "square.and.arrow.up")
+                            .font(.caption.weight(.semibold))
+                    }
+                }
+                Button { showTemplatePicker = true } label: {
+                    Label("Importer un style", systemImage: "square.and.arrow.down")
+                        .font(.caption.weight(.semibold))
+                }
+                Spacer()
+                if vm.appliedStyleID != nil {
+                    Button("Retirer le style") { haptic(); vm.clearStyle() }
+                        .font(.caption.weight(.semibold))
+                        .foregroundColor(.red)
+                }
             }
+        }
+        .onAppear { templateURL = vm.styleTemplateFile() }
+        .onChange(of: vm.effects) { _ in templateURL = vm.styleTemplateFile() }
+        .fileImporter(isPresented: $showTemplatePicker, allowedContentTypes: [.json]) { result in
+            guard case .success(let url) = result else { return }
+            vm.importStyleTemplate(from: url)
         }
     }
 

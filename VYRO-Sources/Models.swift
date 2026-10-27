@@ -121,8 +121,8 @@ struct TextOverlay: Codable, Identifiable, Equatable {
         ("Rose", 1, 0.3, 0.7), ("Menthe", 0.3, 1, 0.7), ("Orange", 1, 0.55, 0.15)
     ]
     static let fontNames = ["Impact", "Arrondi", "Serif", "Mono", "Condensé", "Futura"]
-    static let styleNames = ["Simple", "Contour", "Fond", "Néon"]
-    static let animationNames = ["Aucune", "Pop", "Fondu", "Tourne"]
+    static let styleNames = ["Simple", "Contour", "Fond", "Néon", "Carte", "3D", "Glitch", "Feu", "Rétro"]
+    static let animationNames = ["Aucune", "Pop", "Fondu", "Tourne", "Mots"]
 }
 
 /// Étalonnage couleur : réglages simples, inspirés des looks des créateurs.

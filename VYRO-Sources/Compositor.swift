@@ -306,7 +306,12 @@ enum FrameRenderer {
             if let starts = overlay.wordStarts {
                 active = starts.lastIndex(where: { u >= $0 - 0.02 }) ?? 0
             }
-            guard let label = TextRenderer.image(for: overlay, canvasWidth: w, active: active) else { continue }
+            var reveal: Int?
+            if overlay.animation == 4 {
+                let count = overlay.text.split(separator: " ").count
+                reveal = min(count, Int(u / 0.16) + 1)
+            }
+            guard let label = TextRenderer.image(for: overlay, canvasWidth: w, active: active, reveal: reveal) else { continue }
             var scale = 1.0
             var alpha = 1.0
             var spin = 0.0
@@ -435,10 +440,10 @@ enum TextRenderer {
         }
     }
 
-    static func image(for overlay: TextOverlay, canvasWidth: CGFloat, active: Int? = nil) -> CIImage? {
+    static func image(for overlay: TextOverlay, canvasWidth: CGFloat, active: Int? = nil, reveal: Int? = nil) -> CIImage? {
         guard !overlay.text.isEmpty else { return nil }
         let key = [overlay.text, String(overlay.size), String(overlay.style),
-                   String(overlay.colorIndex), String(overlay.font ?? 0), String(Int(canvasWidth)), String(active ?? -1)].joined(separator: "|")
+                   String(overlay.colorIndex), String(overlay.font ?? 0), String(Int(canvasWidth)), String(active ?? -1), String(reveal ?? -1)].joined(separator: "|")
         lock.lock()
         if let hit = cache[key] { lock.unlock(); return hit }
         lock.unlock()
@@ -463,6 +468,20 @@ enum TextRenderer {
             shadow.shadowBlurRadius = fontSize * 0.3
             shadow.shadowOffset = .zero
             attributes[.shadow] = shadow
+        case 4:
+            attributes[.foregroundColor] = UIColor.black
+        case 7:
+            attributes[.foregroundColor] = UIColor(red: 1, green: 0.95, blue: 0.6, alpha: 1)
+            attributes[.strokeColor] = UIColor(red: 1, green: 0.4, blue: 0.05, alpha: 1)
+            attributes[.strokeWidth] = -6
+            let shadow = NSShadow()
+            shadow.shadowColor = UIColor(red: 1, green: 0.35, blue: 0.0, alpha: 1)
+            shadow.shadowBlurRadius = fontSize * 0.35
+            shadow.shadowOffset = .zero
+            attributes[.shadow] = shadow
+        case 8:
+            attributes[.strokeColor] = UIColor.black
+            attributes[.strokeWidth] = -5
         default: break
         }
         let string = NSMutableAttributedString(string: overlay.text, attributes: attributes)
@@ -483,6 +502,19 @@ enum TextRenderer {
             with: CGSize(width: canvasWidth * 0.9, height: .greatestFiniteMagnitude),
             options: options, context: nil
         )
+        if let reveal {
+            var location = 0
+            for (index, word) in overlay.text.split(separator: " ", omittingEmptySubsequences: false).enumerated() {
+                let length = (word as Substring).utf16.count
+                if index >= reveal, length > 0 {
+                    let range = NSRange(location: location, length: length)
+                    string.addAttribute(.foregroundColor, value: UIColor.clear, range: range)
+                    string.addAttribute(.strokeColor, value: UIColor.clear, range: range)
+                    string.removeAttribute(.shadow, range: range)
+                }
+                location += length + 1
+            }
+        }
         let pad = fontSize * 0.4
         let size = CGSize(width: ceil(box.width) + pad * 2, height: ceil(box.height) + pad * 2)
         let format = UIGraphicsImageRendererFormat()
@@ -493,8 +525,37 @@ enum TextRenderer {
                 UIColor.black.withAlphaComponent(0.6).setFill()
                 UIBezierPath(roundedRect: CGRect(origin: .zero, size: size), cornerRadius: fontSize * 0.3).fill()
             }
-            string.draw(with: CGRect(x: pad, y: pad, width: ceil(box.width) + 1, height: ceil(box.height) + 1),
-                        options: options, context: nil)
+            if overlay.style == 4 {
+                color.setFill()
+                UIBezierPath(roundedRect: CGRect(origin: .zero, size: size), cornerRadius: fontSize * 0.35).fill()
+            }
+            let rect = CGRect(x: pad, y: pad, width: ceil(box.width) + 1, height: ceil(box.height) + 1)
+            // Calques derrière le texte : relief 3D, décalage RVB, ombre rétro.
+            func layer(_ layerColor: UIColor, dx: CGFloat, dy: CGFloat) {
+                let copy = NSMutableAttributedString(attributedString: string)
+                let whole = NSRange(location: 0, length: copy.length)
+                copy.addAttribute(.foregroundColor, value: layerColor, range: whole)
+                copy.removeAttribute(.strokeColor, range: whole)
+                copy.removeAttribute(.strokeWidth, range: whole)
+                copy.removeAttribute(.shadow, range: whole)
+                copy.draw(with: rect.offsetBy(dx: dx, dy: dy), options: options, context: nil)
+            }
+            let step = fontSize * 0.05
+            switch overlay.style {
+            case 5:
+                let dark = UIColor(red: entry.r * 0.4, green: entry.g * 0.4, blue: entry.b * 0.4, alpha: 1)
+                for i in stride(from: 8, through: 1, by: -1) {
+                    layer(dark, dx: CGFloat(i) * step * 0.35, dy: CGFloat(i) * step * 0.35)
+                }
+            case 6:
+                layer(UIColor(red: 0, green: 0.95, blue: 1, alpha: 0.9), dx: -step, dy: 0)
+                layer(UIColor(red: 1, green: 0.1, blue: 0.6, alpha: 0.9), dx: step, dy: 0)
+            case 8:
+                layer(UIColor(red: 0.1, green: 0.9, blue: 1, alpha: 1), dx: step * 2, dy: step * 2)
+                layer(UIColor(red: 1, green: 0.2, blue: 0.65, alpha: 1), dx: step, dy: step)
+            default: break
+            }
+            string.draw(with: rect, options: options, context: nil)
         }
         guard let cg = rendered.cgImage else { return nil }
         let result = CIImage(cgImage: cg)

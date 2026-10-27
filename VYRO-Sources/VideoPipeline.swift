@@ -41,6 +41,8 @@ struct RenderPlan {
     var effects: [EffectModel]
     /// Réduction de la taille de sortie (1 = taille d'origine). Utilisé par les presets d'export.
     var outputScale: Double = 1
+    /// Cadence forcée (nil = celle des clips). 60 rend zooms et secousses bien plus fluides.
+    var fps: Int?
     /// Musique de fond (nil = aucune), volumes 0...1, décalage de départ dans le morceau.
     var musicURL: URL?
     var musicVolume: Double = 0.8
@@ -52,6 +54,8 @@ struct RenderPlan {
     var texts: [TextOverlay] = []
     var keyframes: [Keyframe] = []
     var sounds: [SoundPlan] = []
+    /// La musique baisse quand des sous-titres (donc une voix) sont affichés.
+    var duckMusic = true
 
     /// Faux si le plan ne modifie pas les images (aucun effet actif, pas de stabilisation, un seul clip).
     var needsRendering: Bool {
@@ -85,12 +89,13 @@ struct BuiltPipeline {
 
 /// Presets d'export : la taille maximale du grand côté, jamais d'agrandissement.
 enum ExportPreset: String, CaseIterable, Identifiable {
-    case original, hd1080, hd720
+    case original, hd1080, smooth60, hd720
     var id: String { rawValue }
     var title: String {
         switch self {
         case .original: return "Original"
         case .hd1080: return "1080p"
+        case .smooth60: return "1080p 60 i/s"
         case .hd720: return "720p"
         }
     }
@@ -98,13 +103,15 @@ enum ExportPreset: String, CaseIterable, Identifiable {
         switch self {
         case .original: return "Qualité maximale, taille d'origine"
         case .hd1080: return "TikTok, Reels, Shorts"
+        case .smooth60: return "Effets ultra fluides, fichier plus lourd"
         case .hd720: return "Envoi rapide, fichier léger"
         }
     }
+    var fps: Int? { self == .smooth60 ? 60 : nil }
     var longSide: Double? {
         switch self {
         case .original: return nil
-        case .hd1080: return 1920
+        case .hd1080, .smooth60: return 1920
         case .hd720: return 1280
         }
     }
@@ -177,7 +184,7 @@ enum VideoPipeline {
                 height: (canvas.height * plan.outputScale / 2).rounded() * 2
             )
         }
-        let frameRate = loaded.map(\.frameRate).max() ?? 30
+        let frameRate = plan.fps.map { Float($0) } ?? (loaded.map(\.frameRate).max() ?? 30)
 
         func timeMap(for item: Loaded) -> TimeMap {
             if let hold = item.plan.hold {
@@ -301,6 +308,33 @@ enum VideoPipeline {
                     let parameters = AVMutableAudioMixInputParameters(track: musicCompositionTrack)
                     let volume = Float(plan.musicVolume)
                     parameters.setVolume(volume, at: .zero)
+                    if plan.duckMusic {
+                        let duck = volume * 0.45
+                        let limit = max(length.seconds - 0.5, 0)
+                        var merged: [(start: Double, end: Double)] = []
+                        for item in plan.texts.filter({ $0.subtitle == true }).sorted(by: { $0.start < $1.start }) {
+                            if let last = merged.last, item.start - last.end < 0.6 {
+                                merged[merged.count - 1].end = max(last.end, item.end)
+                            } else {
+                                merged.append((item.start, item.end))
+                            }
+                        }
+                        var cursor = 0.0
+                        for item in merged {
+                            let a = max(item.start - 0.15, cursor)
+                            let b = min(item.end, limit - 0.3)
+                            guard b - a > 0.4 else { continue }
+                            parameters.setVolumeRamp(
+                                fromStartVolume: volume, toEndVolume: duck,
+                                timeRange: CMTimeRange(start: CMTime(seconds: a, preferredTimescale: 600),
+                                                       duration: CMTime(seconds: 0.15, preferredTimescale: 600)))
+                            parameters.setVolumeRamp(
+                                fromStartVolume: duck, toEndVolume: volume,
+                                timeRange: CMTimeRange(start: CMTime(seconds: b, preferredTimescale: 600),
+                                                       duration: CMTime(seconds: 0.3, preferredTimescale: 600)))
+                            cursor = b + 0.3
+                        }
+                    }
                     let fade = CMTime(seconds: 0.5, preferredTimescale: 600)
                     if length > fade {
                         parameters.setVolumeRamp(
@@ -412,6 +446,7 @@ enum VideoPipeline {
                        preset: ExportPreset = .original,
                        progress: @escaping (Double) -> Void) async throws -> URL {
         var plan = plan
+        plan.fps = preset.fps
         if let side = preset.longSide, let first = plan.clips.first,
            let size = try? await naturalLongSide(url: first.url), size > side {
             plan.outputScale = side / size
