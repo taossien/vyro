@@ -128,6 +128,9 @@ struct EditorView: View {
                         .frame(width: geo.size.width, height: geo.size.height)
                         .contentShape(Rectangle())
                         .onTapGesture { vm.togglePlayback() }
+                    if panel == .text, let sticker = vm.selectedSticker, vm.renderSize.width > 0 {
+                        stickerHandle(sticker, in: geo.size)
+                    }
                     if !vm.isPlaying {
                         Image(systemName: "play.fill")
                             .font(.system(size: 34))
@@ -163,8 +166,34 @@ struct EditorView: View {
                 }
             }
             .frame(width: geo.size.width, height: geo.size.height)
+            .coordinateSpace(name: "preview")
             .background(Color.black)
         }
+    }
+
+    /// Cadre pointillé du calque sélectionné : on le glisse du doigt pour le placer.
+    private func stickerHandle(_ item: StickerOverlay, in size: CGSize) -> some View {
+        let rs = vm.renderSize
+        let k = min(size.width / rs.width, size.height / rs.height)
+        let vw = rs.width * k, vh = rs.height * k
+        let ox = (size.width - vw) / 2, oy = (size.height - vh) / 2
+        let bw = max(item.size * vw, 24)
+        let bh = max(item.aspect * bw, 24)
+        let id = item.id
+        return Rectangle()
+            .stroke(Color.orange, style: StrokeStyle(lineWidth: 2, dash: [6, 4]))
+            .background(Color.orange.opacity(0.08))
+            .frame(width: bw, height: bh)
+            .contentShape(Rectangle())
+            .position(x: ox + item.x * vw, y: oy + item.y * vh)
+            .gesture(
+                DragGesture(coordinateSpace: .named("preview"))
+                    .onChanged { value in
+                        let x = min(max((value.location.x - ox) / vw, 0), 1)
+                        let y = min(max((value.location.y - oy) / vh, 0), 1)
+                        vm.updateSticker(id: id) { $0.x = x; $0.y = y }
+                    }
+            )
     }
 
     private var transport: some View {
