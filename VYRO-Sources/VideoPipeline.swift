@@ -30,12 +30,14 @@ struct RenderPlan {
     var originalVolume: Double = 1
     /// Force du flou de mouvement (0 = aucun, 1 = rendu cinéma).
     var motionBlur: Double = 1
+    var grade: ColorGrade?
 
     /// Faux si le plan ne modifie pas les images (aucun effet actif, pas de stabilisation, un seul clip).
     var needsRendering: Bool {
         clips.count > 1
             || clips.contains { $0.stabilization != nil }
             || outputScale < 0.999
+            || !(grade?.isNeutral ?? true)
             || effects.contains { $0.enabled }
     }
 }
@@ -188,7 +190,8 @@ enum VideoPipeline {
                             effects: plan.effects,
                             stabilization: item.plan.stabilization,
                             timeMap: map,
-                            motionBlur: plan.motionBlur
+                            motionBlur: plan.motionBlur,
+                            grade: plan.grade
                         )],
                         finalSize: finalSize, frameRate: frameRate)
                 }
@@ -299,7 +302,8 @@ enum VideoPipeline {
                 effects: plan.effects,
                 stabilization: entry.item.plan.stabilization,
                 timeMap: spans[index].timeMap,
-                motionBlur: plan.motionBlur
+                motionBlur: plan.motionBlur,
+                grade: plan.grade
             ))
         }
 

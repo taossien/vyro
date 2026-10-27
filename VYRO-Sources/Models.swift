@@ -67,6 +67,29 @@ struct ClipModel: Codable, Identifiable, Equatable {
     var musicOffset: Double?
     /// Force du flou de mouvement (nil = 1, rendu cinéma).
     var motionBlur: Double?
+    /// Étalonnage global (nil = image d'origine).
+    var colorGrade: ColorGrade?
+}
+
+/// Étalonnage couleur : réglages simples, inspirés des looks des créateurs.
+struct ColorGrade: Codable, Equatable {
+    var exposure: Double = 0       // -1...1 (IL)
+    var contrast: Double = 1       // 0.5...1.6
+    var saturation: Double = 1     // 0...2
+    var warmth: Double = 0         // -1 (froid) ... 1 (chaud)
+    var vignette: Double = 0       // 0...1
+
+    static let neutral = ColorGrade()
+    var isNeutral: Bool { self == ColorGrade.neutral }
+
+    static let presets: [(name: String, grade: ColorGrade)] = [
+        ("Neutre", .neutral),
+        ("Néon", ColorGrade(exposure: 0, contrast: 1.25, saturation: 1.5, warmth: -0.2, vignette: 0.3)),
+        ("Cinéma", ColorGrade(exposure: -0.1, contrast: 1.15, saturation: 0.9, warmth: 0.2, vignette: 0.4)),
+        ("Sombre", ColorGrade(exposure: -0.4, contrast: 1.3, saturation: 1.1, warmth: -0.1, vignette: 0.5)),
+        ("Vif", ColorGrade(exposure: 0.05, contrast: 1.15, saturation: 1.6, warmth: 0, vignette: 0)),
+        ("Rétro", ColorGrade(exposure: 0, contrast: 1.1, saturation: 0.7, warmth: 0.5, vignette: 0.3))
+    ]
 }
 
 struct TrackModel: Codable, Identifiable, Equatable {

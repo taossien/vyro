@@ -13,7 +13,7 @@ struct EditorView: View {
     @StateObject private var vm: EditorViewModel
     @State private var panel: ToolPanel?
 
-    enum ToolPanel { case speed, stabilization, trim, music, render }
+    enum ToolPanel { case speed, stabilization, trim, music, render, look }
     @State private var showMusicPicker = false
 
     init(project: ProjectModel? = nil) {
@@ -260,6 +260,10 @@ struct EditorView: View {
                 vm.selectedEffectID = nil
                 panel = panel == .stabilization ? nil : .stabilization
             }
+            toolButton("Look", icon: "camera.filters", color: .purple, active: panel == .look || !vm.colorGrade.isNeutral) {
+                vm.selectedEffectID = nil
+                panel = panel == .look ? nil : .look
+            }
             toolButton("Rendu", icon: "sparkles", color: .cyan, active: panel == .render) {
                 vm.selectedEffectID = nil
                 panel = panel == .render ? nil : .render
@@ -305,6 +309,8 @@ struct EditorView: View {
             panelContainer(title: "Vitesse", icon: "speedometer") { speedPanel }
         } else if panel == .render {
             panelContainer(title: "Rendu", icon: "sparkles") { renderPanel }
+        } else if panel == .look {
+            panelContainer(title: "Look", icon: "camera.filters") { lookPanel }
         } else if panel == .music {
             panelContainer(title: "Musique", icon: "music.note") { musicPanel }
         } else if panel == .trim {
@@ -554,6 +560,43 @@ struct EditorView: View {
             Text("Flou de mouvement : les zooms et secousses rapides deviennent fluides, comme avec l'obturateur d'une caméra. 1 correspond au rendu cinéma, 0 le désactive.")
                 .font(.caption)
                 .foregroundColor(Theme.textSecondary)
+        }
+    }
+
+    // MARK: Look (étalonnage)
+
+    private var lookPanel: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(Array(ColorGrade.presets.enumerated()), id: \.offset) { _, preset in
+                        let selected = vm.colorGrade == preset.grade
+                        Button { haptic(); vm.setColorGrade(preset.grade) } label: {
+                            Text(preset.name)
+                                .font(.caption.weight(.semibold))
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 7)
+                                .background(Capsule().fill(selected ? Color.purple : Color.white.opacity(0.08)))
+                                .foregroundColor(selected ? .white : Theme.textSecondary)
+                        }
+                    }
+                }
+            }
+            sliderRow(label: "Lumière",
+                      value: Binding(get: { vm.colorGrade.exposure }, set: { var g = vm.colorGrade; g.exposure = $0; vm.setColorGrade(g) }),
+                      range: -1...1, display: String(format: "%+.1f", vm.colorGrade.exposure))
+            sliderRow(label: "Contraste",
+                      value: Binding(get: { vm.colorGrade.contrast }, set: { var g = vm.colorGrade; g.contrast = $0; vm.setColorGrade(g) }),
+                      range: 0.5...1.6, display: String(format: "%.2f", vm.colorGrade.contrast))
+            sliderRow(label: "Couleurs",
+                      value: Binding(get: { vm.colorGrade.saturation }, set: { var g = vm.colorGrade; g.saturation = $0; vm.setColorGrade(g) }),
+                      range: 0...2, display: String(format: "%.0f %%", vm.colorGrade.saturation * 100))
+            sliderRow(label: "Chaleur",
+                      value: Binding(get: { vm.colorGrade.warmth }, set: { var g = vm.colorGrade; g.warmth = $0; vm.setColorGrade(g) }),
+                      range: -1...1, display: String(format: "%+.1f", vm.colorGrade.warmth))
+            sliderRow(label: "Vignette",
+                      value: Binding(get: { vm.colorGrade.vignette }, set: { var g = vm.colorGrade; g.vignette = $0; vm.setColorGrade(g) }),
+                      range: 0...1, display: String(format: "%.0f %%", vm.colorGrade.vignette * 100))
         }
     }
 

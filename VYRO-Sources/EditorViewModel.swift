@@ -141,8 +141,16 @@ final class EditorViewModel: ObservableObject {
             musicVolume: musicVolume,
             musicOffset: musicOffset,
             originalVolume: originalVolume,
-            motionBlur: motionBlurStrength
+            motionBlur: motionBlurStrength,
+            grade: colorGrade
         )
+    }
+
+    var colorGrade: ColorGrade { project.tracks.first?.clips.first?.colorGrade ?? .neutral }
+
+    func setColorGrade(_ grade: ColorGrade) {
+        mutateClip { $0.colorGrade = grade.isNeutral ? nil : grade }
+        scheduleRebuild()
     }
 
     var motionBlurStrength: Double { project.tracks.first?.clips.first?.motionBlur ?? 1 }
@@ -392,6 +400,7 @@ final class EditorViewModel: ObservableObject {
         clip.originalVolume = nil
         clip.musicOffset = nil
         clip.motionBlur = nil
+        clip.colorGrade = nil
     }
 
     /// Réordonne / retire des clips en gardant les réglages globaux sur le premier.
@@ -407,6 +416,7 @@ final class EditorViewModel: ObservableObject {
             clips[0].originalVolume = globals.originalVolume
             clips[0].musicOffset = globals.musicOffset
             clips[0].motionBlur = globals.motionBlur
+            clips[0].colorGrade = globals.colorGrade
         }
     }
 

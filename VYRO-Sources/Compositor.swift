@@ -32,6 +32,7 @@ final class VYROInstruction: NSObject, AVVideoCompositionInstructionProtocol {
     let timeMap: TimeMap
     /// 0 = pas de flou de mouvement, 1 = obturateur 180° (rendu cinéma), 2 = très marqué.
     let motionBlur: Double
+    let grade: ColorGrade?
 
     init(timeRange: CMTimeRange,
          trackID: CMPersistentTrackID,
@@ -43,7 +44,8 @@ final class VYROInstruction: NSObject, AVVideoCompositionInstructionProtocol {
          effects: [EffectModel],
          stabilization: StabilizationData?,
          timeMap: TimeMap,
-         motionBlur: Double) {
+         motionBlur: Double,
+         grade: ColorGrade? = nil) {
         self.timeRange = timeRange
         self.trackID = trackID
         self.requiredSourceTrackIDs = [NSNumber(value: trackID)]
@@ -56,6 +58,7 @@ final class VYROInstruction: NSObject, AVVideoCompositionInstructionProtocol {
         self.stabilization = stabilization
         self.timeMap = timeMap
         self.motionBlur = motionBlur
+        self.grade = grade
         super.init()
     }
 }
@@ -189,6 +192,10 @@ enum FrameRenderer {
             image = rgbSplit(image, offset: CGFloat(now.rgbSplit) * w, rect: rect)
         }
 
+        if let grade = instruction.grade, !grade.isNeutral {
+            image = applyGrade(image, grade, rect: rect)
+        }
+
         if now.glow > 0.02 {
             image = image.clampedToExtent()
                 .applyingFilter("CIBloom", parameters: [
@@ -209,6 +216,34 @@ enum FrameRenderer {
             image = image.transformed(by: CGAffineTransform(scaleX: finalSize.width / w, y: finalSize.height / h))
         }
         return image
+    }
+
+    /// Exposition, contraste, saturation, chaleur (gains rouge/bleu), vignette.
+    private static func applyGrade(_ input: CIImage, _ g: ColorGrade, rect: CGRect) -> CIImage {
+        var image = input
+        if abs(g.exposure) > 0.001 {
+            image = image.applyingFilter("CIExposureAdjust", parameters: [kCIInputEVKey: g.exposure])
+        }
+        image = image.applyingFilter("CIColorControls", parameters: [
+            kCIInputContrastKey: g.contrast,
+            kCIInputSaturationKey: g.saturation
+        ])
+        if abs(g.warmth) > 0.001 {
+            let w = CGFloat(g.warmth) * 0.15
+            image = image.applyingFilter("CIColorMatrix", parameters: [
+                "inputRVector": CIVector(x: 1 + w, y: 0, z: 0, w: 0),
+                "inputGVector": CIVector(x: 0, y: 1, z: 0, w: 0),
+                "inputBVector": CIVector(x: 0, y: 0, z: 1 - w, w: 0),
+                "inputAVector": CIVector(x: 0, y: 0, z: 0, w: 1)
+            ])
+        }
+        if g.vignette > 0.01 {
+            image = image.applyingFilter("CIVignette", parameters: [
+                kCIInputIntensityKey: g.vignette * 1.5,
+                kCIInputRadiusKey: 1.5
+            ])
+        }
+        return image.cropped(to: rect)
     }
 
     /// Zoom autour du centre puis décalage (fractions de l'image, dy vers le bas).
