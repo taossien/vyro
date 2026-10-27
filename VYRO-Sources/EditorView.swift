@@ -8,6 +8,7 @@ import SwiftUI
 import AVFoundation
 import UIKit
 import UniformTypeIdentifiers
+import Photos
 
 struct EditorView: View {
     @StateObject private var vm: EditorViewModel
@@ -1116,6 +1117,29 @@ struct EffectBlock: View {
 struct ExportDoneView: View {
     let url: URL?
     @Environment(\.dismiss) private var dismiss
+    @State private var saveMessage: String?
+    @State private var saving = false
+
+    private func saveToPhotos(_ url: URL) {
+        saving = true
+        PHPhotoLibrary.requestAuthorization(for: .addOnly) { status in
+            guard status == .authorized || status == .limited else {
+                DispatchQueue.main.async {
+                    saving = false
+                    saveMessage = "Autorise l'accès à Photos dans Réglages pour enregistrer."
+                }
+                return
+            }
+            PHPhotoLibrary.shared().performChanges({
+                PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: url)
+            }) { success, error in
+                DispatchQueue.main.async {
+                    saving = false
+                    saveMessage = success ? "Enregistrée dans Photos." : "Enregistrement impossible : " + (error?.localizedDescription ?? "erreur")
+                }
+            }
+        }
+    }
 
     var body: some View {
         VStack(spacing: 20) {
@@ -1125,17 +1149,28 @@ struct ExportDoneView: View {
             Text("Export terminé")
                 .font(.title2.weight(.bold))
                 .foregroundColor(Theme.textPrimary)
-            Text("Utilise « Enregistrer la vidéo » dans le menu de partage pour l'ajouter à ta photothèque.")
-                .font(.footnote)
-                .multilineTextAlignment(.center)
-                .foregroundColor(Theme.textSecondary)
             if let url {
-                ShareLink(item: url) {
-                    Label("Partager / Enregistrer", systemImage: "square.and.arrow.up")
+                Button { saveToPhotos(url) } label: {
+                    Label(saving ? "Enregistrement…" : "Enregistrer dans Photos", systemImage: "square.and.arrow.down")
                         .font(.headline)
                         .frame(maxWidth: .infinity)
                         .padding()
                         .background(RoundedRectangle(cornerRadius: 12).fill(Theme.accent))
+                        .foregroundColor(.white)
+                }
+                .disabled(saving || saveMessage == "Enregistrée dans Photos.")
+                if let saveMessage {
+                    Text(saveMessage)
+                        .font(.footnote)
+                        .multilineTextAlignment(.center)
+                        .foregroundColor(Theme.textSecondary)
+                }
+                ShareLink(item: url) {
+                    Label("Partager", systemImage: "square.and.arrow.up")
+                        .font(.headline)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(RoundedRectangle(cornerRadius: 12).fill(Color.white.opacity(0.1)))
                         .foregroundColor(.white)
                 }
             }

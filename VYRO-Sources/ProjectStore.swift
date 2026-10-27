@@ -4,6 +4,8 @@
 //
 
 import Foundation
+import AVFoundation
+import UIKit
 
 enum ProjectStore {
     private static var documentsDirectory: URL {
@@ -34,6 +36,35 @@ enum ProjectStore {
     static func delete(id: UUID) {
         let url = projectsDirectory.appendingPathComponent(id.uuidString + ".json")
         try? FileManager.default.removeItem(at: url)
+        try? FileManager.default.removeItem(at: thumbnailURL(for: id))
+    }
+
+    // MARK: Miniatures
+
+    static func thumbnailURL(for id: UUID) -> URL {
+        projectsDirectory.appendingPathComponent(id.uuidString + ".jpg")
+    }
+
+    static func thumbnail(for id: UUID) -> UIImage? {
+        UIImage(contentsOfFile: thumbnailURL(for: id).path)
+    }
+
+    static func copyThumbnail(from source: UUID, to destination: UUID) {
+        try? FileManager.default.removeItem(at: thumbnailURL(for: destination))
+        try? FileManager.default.copyItem(at: thumbnailURL(for: source), to: thumbnailURL(for: destination))
+    }
+
+    /// Image du premier clip (là où commence le montage), enregistrée en JPEG.
+    static func updateThumbnail(for project: ProjectModel) async {
+        guard let clip = project.tracks.first?.clips.first else { return }
+        let asset = AVURLAsset(url: mediaDirectory.appendingPathComponent(clip.mediaFileName))
+        let generator = AVAssetImageGenerator(asset: asset)
+        generator.appliesPreferredTrackTransform = true
+        generator.maximumSize = CGSize(width: 360, height: 360)
+        let time = CMTime(seconds: (clip.trimIn ?? 0) + 0.3, preferredTimescale: 600)
+        guard let cg = try? await generator.image(at: time).image,
+              let data = UIImage(cgImage: cg).jpegData(compressionQuality: 0.8) else { return }
+        try? data.write(to: thumbnailURL(for: project.id), options: .atomic)
     }
 
     static func loadAll() -> [ProjectModel] {

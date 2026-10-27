@@ -917,7 +917,11 @@ final class EditorViewModel: ObservableObject {
             NotificationCenter.default.removeObserver(endObserver)
         }
         endObserver = nil
-        if hasClip { persist() }
+        if hasClip {
+            persist()
+            let snapshot = project
+            Task.detached { await ProjectStore.updateThumbnail(for: snapshot) }
+        }
     }
 
     private func observeEnd(of item: AVPlayerItem) {

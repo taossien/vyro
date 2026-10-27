@@ -34,13 +34,17 @@ struct HomeView: View {
                             NavigationLink {
                                 EditorView(project: project)
                             } label: {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(project.name)
-                                        .foregroundColor(Theme.textPrimary)
-                                    Text(project.modificationDate
-                                        .formatted(date: .abbreviated, time: .shortened))
-                                        .font(.caption)
-                                        .foregroundColor(Theme.textSecondary)
+                                HStack(spacing: 12) {
+                                    thumbnail(for: project)
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(project.name)
+                                            .foregroundColor(Theme.textPrimary)
+                                        let count = project.tracks.first?.clips.count ?? 0
+                                        Text((count > 0 ? String(count) + (count > 1 ? " clips · " : " clip · ") : "")
+                                            + project.modificationDate.formatted(date: .abbreviated, time: .shortened))
+                                            .font(.caption)
+                                            .foregroundColor(Theme.textSecondary)
+                                    }
                                 }
                             }
                             .listRowBackground(Theme.surface)
@@ -82,6 +86,11 @@ struct HomeView: View {
             }
             .onAppear {
                 projects = ProjectStore.loadAll()
+                // La miniature du projet qu'on vient de quitter s'écrit juste après.
+                Task {
+                    try? await Task.sleep(nanoseconds: 900_000_000)
+                    projects = ProjectStore.loadAll()
+                }
             }
             .alert("Renommer le projet", isPresented: Binding(
                 get: { renaming != nil },
@@ -92,6 +101,24 @@ struct HomeView: View {
                 Button("OK") { applyRename() }
             }
         }
+    }
+
+    @ViewBuilder
+    private func thumbnail(for project: ProjectModel) -> some View {
+        Group {
+            if let image = ProjectStore.thumbnail(for: project.id) {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                ZStack {
+                    Color.white.opacity(0.06)
+                    Image(systemName: "film").foregroundColor(Theme.textSecondary)
+                }
+            }
+        }
+        .frame(width: 44, height: 58)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
     private func applyRename() {
@@ -111,6 +138,7 @@ struct HomeView: View {
         copy.creationDate = Date()
         copy.modificationDate = Date()
         try? ProjectStore.save(copy)
+        ProjectStore.copyThumbnail(from: project.id, to: copy.id)
         projects = ProjectStore.loadAll()
     }
 

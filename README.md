@@ -76,3 +76,7 @@ Limites connues : un seul clip par montage, effets positionnés en temps de mont
 ### Mouvement (images clés)
 - Piste Mouvement : images clés de zoom, position et rotation, avec une courbe (lisse, linéaire, rapide, maintenu) vers l'image clé suivante.
 - Le flou de mouvement s'applique aussi aux mouvements créés avec les images clés.
+
+### Projets et export
+- Miniature et nombre de clips pour chaque projet sur l'accueil.
+- Bouton « Enregistrer dans Photos » à la fin de l'export (autorisation d'ajout à la photothèque), en plus du partage.
