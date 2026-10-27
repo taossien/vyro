@@ -86,9 +86,9 @@ enum ExportPreset: String, CaseIterable, Identifiable {
     }
     var detail: String {
         switch self {
-        case .original: return "Qualité maximale, taille du fichier source"
-        case .hd1080: return "Idéal TikTok, Reels, Shorts"
-        case .hd720: return "Fichier léger, envoi rapide"
+        case .original: return "Qualité maximale, taille d'origine"
+        case .hd1080: return "TikTok, Reels, Shorts"
+        case .hd720: return "Envoi rapide, fichier léger"
         }
     }
     var longSide: Double? {

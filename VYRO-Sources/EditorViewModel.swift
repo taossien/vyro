@@ -531,8 +531,13 @@ final class EditorViewModel: ObservableObject {
     // MARK: - Chargement
 
     /// Vidéo importée : premier clip du montage, ou clip ajouté à la suite.
-    func loadClip(at url: URL) {
-        Task {
+    func loadClips(_ urls: [URL]) {
+        Task { for url in urls { await addClip(url) } }
+    }
+
+    func loadClip(at url: URL) { loadClips([url]) }
+
+    private func addClip(_ url: URL) async {
             do {
                 let seconds = try await AVURLAsset(url: url).load(.duration).seconds
                 guard seconds.isFinite, seconds > 0 else { throw PipelineError.invalidDuration }
@@ -558,7 +563,6 @@ final class EditorViewModel: ObservableObject {
             } catch {
                 errorMessage = "Impossible de lire ce clip : " + error.localizedDescription
             }
-        }
     }
 
     private func openExisting() {
@@ -604,6 +608,60 @@ final class EditorViewModel: ObservableObject {
     private func rebuildNow() {
         rebuildTask?.cancel()
         rebuildTask = Task { await rebuild() }
+    }
+
+    // MARK: - Styles prêts à l'emploi
+
+    @Published private(set) var appliedStyleID: String?
+
+    /// Applique un style : look, flou, transitions sur chaque coupure, effets sur les temps forts.
+    func applyStyle(_ style: StylePreset) {
+        guard hasClip, duration > 0 else { return }
+        var marks: [Double]
+        let beats = beatMarks
+        if beats.count >= 2 {
+            marks = beats.enumerated().filter { $0.offset % max(style.beatEvery, 1) == 0 }.map { $0.element }
+        } else {
+            // Sans musique : sur chaque coupure, puis à intervalle régulier.
+            marks = spans.dropFirst().map { $0.start }
+            var t = 1.5
+            while t < duration - 0.3 {
+                marks.append(t)
+                t += 1.6 * Double(max(style.beatEvery, 1))
+            }
+        }
+        marks = marks.filter { $0 > 0.2 && $0 < duration - 0.3 }.sorted()
+        var spaced: [Double] = []
+        for mark in marks where spaced.last.map({ mark - $0 > 0.35 }) ?? true { spaced.append(mark) }
+        if spaced.count > 80 {
+            let step = Double(spaced.count) / 80
+            spaced = (0..<80).map { spaced[Int(Double($0) * step)] }
+        }
+        var list: [EffectModel] = []
+        for (index, mark) in spaced.enumerated() {
+            list += style.effects(mark, index, max(duration - mark, 0.1))
+        }
+        mutateAll { clips in
+            clips[0].effects = list
+            clips[0].colorGrade = style.grade.isNeutral ? nil : style.grade
+            clips[0].motionBlur = style.motionBlur
+            for index in clips.indices { clips[index].transition = index > 0 ? style.transition : nil }
+        }
+        appliedStyleID = style.id
+        selectedEffectID = nil
+        scheduleRebuild()
+    }
+
+    func clearStyle() {
+        mutateAll { clips in
+            clips[0].effects = []
+            clips[0].colorGrade = nil
+            clips[0].motionBlur = nil
+            for index in clips.indices { clips[index].transition = nil }
+        }
+        appliedStyleID = nil
+        selectedEffectID = nil
+        scheduleRebuild()
     }
 
     var currentTransition: CutTransition? { currentClip?.transition }

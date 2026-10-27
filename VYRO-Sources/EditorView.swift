@@ -14,7 +14,8 @@ struct EditorView: View {
     @StateObject private var vm: EditorViewModel
     @State private var panel: ToolPanel?
 
-    enum ToolPanel { case speed, stabilization, trim, music, render, look, text, motion, transition }
+    enum ToolPanel { case speed, stabilization, trim, music, render, look, text, motion, transition, style }
+    @AppStorage("vyro.advanced") private var advanced = false
     @State private var showFilePicker = false
     @State private var pickingMusic = true
 
@@ -53,6 +54,13 @@ struct EditorView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
+                Button {
+                    advanced.toggle()
+                    if !advanced { panel = nil; vm.selectedEffectID = nil }
+                } label: {
+                    Image(systemName: advanced ? "slider.horizontal.3" : "wand.and.stars")
+                }
+                .accessibilityLabel(advanced ? "Passer en mode simple" : "Passer en mode avancé")
                 Menu {
                     ForEach(ExportPreset.allCases) { preset in
                         Button {
@@ -76,8 +84,8 @@ struct EditorView: View {
             }
         }
         .sheet(isPresented: $vm.showImporter) {
-            MediaImporter { url in
-                vm.loadClip(at: url)
+            MediaImporter { urls in
+                vm.loadClips(urls)
             }
         }
         .fileImporter(isPresented: $showFilePicker, allowedContentTypes: [.audio, .movie, .mpeg4Movie, .quickTimeMovie]) { result in
@@ -238,6 +246,11 @@ struct EditorView: View {
                 panel = nil
                 vm.addImpact()
             }
+            toolButton("Style", icon: "wand.and.stars", color: Theme.accent, active: panel == .style || vm.appliedStyleID != nil) {
+                vm.selectedEffectID = nil
+                panel = panel == .style ? nil : .style
+            }
+            if advanced {
             toolButton("Zoom", icon: "plus.magnifyingglass", color: Theme.accent, active: vm.selectedEffect?.type == .zoom) {
                 haptic()
                 panel = nil
@@ -263,6 +276,7 @@ struct EditorView: View {
                 panel = nil
                 vm.addGlow()
             }
+            }
             toolButton("Couper", icon: "scissors", color: .orange, active: panel == .trim || vm.isTrimmed) {
                 vm.selectedEffectID = nil
                 panel = panel == .trim ? nil : .trim
@@ -271,6 +285,7 @@ struct EditorView: View {
                 vm.selectedEffectID = nil
                 panel = panel == .speed ? nil : .speed
             }
+            if advanced {
             toolButton("Stable", icon: "gyroscope", color: .green, active: panel == .stabilization || vm.stabilizationEnabled) {
                 vm.selectedEffectID = nil
                 panel = panel == .stabilization ? nil : .stabilization
@@ -283,6 +298,7 @@ struct EditorView: View {
                 vm.selectedEffectID = nil
                 panel = panel == .motion ? nil : .motion
             }
+            }
             toolButton("Texte", icon: "textformat", color: .white, active: panel == .text || !vm.texts.isEmpty) {
                 vm.selectedEffectID = nil
                 panel = panel == .text ? nil : .text
@@ -291,9 +307,11 @@ struct EditorView: View {
                 vm.selectedEffectID = nil
                 panel = panel == .look ? nil : .look
             }
+            if advanced {
             toolButton("Rendu", icon: "sparkles", color: .cyan, active: panel == .render) {
                 vm.selectedEffectID = nil
                 panel = panel == .render ? nil : .render
+            }
             }
             toolButton("Musique", icon: "music.note", color: .mint, active: panel == .music || vm.musicName != nil) {
                 vm.selectedEffectID = nil
@@ -334,6 +352,8 @@ struct EditorView: View {
             panelContainer(title: effect.title, icon: effect.systemImage) { effectPanel(effect) }
         } else if panel == .speed {
             panelContainer(title: "Vitesse", icon: "speedometer") { speedPanel }
+        } else if panel == .style {
+            panelContainer(title: "Style", icon: "wand.and.stars") { stylePanel }
         } else if panel == .render {
             panelContainer(title: "Rendu", icon: "sparkles") { renderPanel }
         } else if panel == .transition {
@@ -356,19 +376,86 @@ struct EditorView: View {
     }
 
     private var hint: some View {
-        VStack(spacing: 6) {
-            Text(vm.hasClip ? "Place la tête de lecture sur l'impact, puis touche un outil." : "Importe une vidéo pour commencer.")
-                .font(.footnote)
-                .foregroundColor(Theme.textSecondary)
-                .multilineTextAlignment(.center)
-            if vm.hasClip {
-                Text("Glisse un effet sur la timeline pour le déplacer.")
-                    .font(.caption)
-                    .foregroundColor(Theme.textSecondary.opacity(0.7))
+        VStack(spacing: 14) {
+            if !vm.hasClip {
+                Button { vm.showImporter = true } label: {
+                    Label("Importer mes clips", systemImage: "plus.circle.fill")
+                        .font(.headline)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                        .background(RoundedRectangle(cornerRadius: 16).fill(Theme.accent))
+                        .foregroundColor(.white)
+                }
+                Text("Choisis une ou plusieurs vidéos de jeu.")
+                    .font(.footnote)
+                    .foregroundColor(Theme.textSecondary)
+            } else {
+                Text("3 étapes pour un montage qui claque")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundColor(Theme.textSecondary)
+                HStack(spacing: 10) {
+                    hubStep("1", "Style", icon: "wand.and.stars", done: vm.appliedStyleID != nil) { panel = .style }
+                    hubStep("2", "Musique", icon: "music.note", done: vm.musicName != nil) { panel = .music }
+                    hubStep("3", "Exporter", icon: "square.and.arrow.up", done: false) { panel = .render }
+                }
+                if !advanced {
+                    Text("Besoin de plus ? Touche la baguette en haut pour le mode avancé.")
+                        .font(.caption)
+                        .foregroundColor(Theme.textSecondary.opacity(0.7))
+                        .multilineTextAlignment(.center)
+                }
             }
         }
         .padding(.top, 18)
         .padding(.horizontal, 24)
+    }
+
+    private func hubStep(_ number: String, _ title: String, icon: String, done: Bool, action: @escaping () -> Void) -> some View {
+        Button { haptic(); vm.selectedEffectID = nil; action() } label: {
+            VStack(spacing: 6) {
+                Image(systemName: done ? "checkmark.circle.fill" : icon)
+                    .font(.title2)
+                    .foregroundColor(done ? .green : Theme.accent)
+                Text("\(number). \(title)")
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(.white)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+            .background(RoundedRectangle(cornerRadius: 14).fill(Color.white.opacity(0.08)))
+        }
+    }
+
+    private var stylePanel: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Un geste : look, effets sur le rythme, transitions.")
+                .font(.caption)
+                .foregroundColor(Theme.textSecondary)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 10) {
+                    ForEach(StylePreset.all) { style in
+                        let selected = vm.appliedStyleID == style.id
+                        Button { haptic(); vm.applyStyle(style) } label: {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Image(systemName: style.icon).font(.title3)
+                                Text(style.name).font(.subheadline.weight(.bold))
+                                Text(style.blurb).font(.caption2).lineLimit(3)
+                                    .multilineTextAlignment(.leading)
+                            }
+                            .frame(width: 130, alignment: .leading)
+                            .padding(10)
+                            .background(RoundedRectangle(cornerRadius: 14).fill(selected ? Theme.accent : Color.white.opacity(0.08)))
+                            .foregroundColor(selected ? .white : Theme.textSecondary)
+                        }
+                    }
+                }
+            }
+            if vm.appliedStyleID != nil {
+                Button("Retirer le style") { haptic(); vm.clearStyle() }
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(.red)
+            }
+        }
     }
 
     private func panelContainer<Content: View>(title: String, icon: String, @ViewBuilder content: () -> Content) -> some View {

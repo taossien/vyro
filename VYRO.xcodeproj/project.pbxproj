@@ -241,8 +241,8 @@
 				INFOPLIST_KEY_CFBundleDisplayName = VYRO;
 				INFOPLIST_KEY_LSRequiresIPhoneOS = YES;
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "VYRO enregistre tes montages exportés dans ta photothèque.";
-				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "VYRO transcrit la voix de ton montage pour créer les sous-titres.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "VYRO accède à tes vidéos pour les importer dans tes montages.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "VYRO transcrit la voix de ton montage pour créer les sous-titres.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -267,8 +267,8 @@
 				INFOPLIST_KEY_CFBundleDisplayName = VYRO;
 				INFOPLIST_KEY_LSRequiresIPhoneOS = YES;
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "VYRO enregistre tes montages exportés dans ta photothèque.";
-				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "VYRO transcrit la voix de ton montage pour créer les sous-titres.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "VYRO accède à tes vidéos pour les importer dans tes montages.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "VYRO transcrit la voix de ton montage pour créer les sous-titres.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
