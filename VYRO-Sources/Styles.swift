@@ -15,6 +15,8 @@ struct StylePreset: Identifiable {
     let transition: CutTransition?
     /// Un effet tous les N temps forts de la musique.
     let beatEvery: Int
+    /// Effet sonore posé sur chaque temps fort retenu.
+    let sound: SoundKind?
     /// Effets posés sur un temps fort (temps, numéro, durée restante).
     let effects: (_ time: Double, _ index: Int, _ room: Double) -> [EffectModel]
 
@@ -23,7 +25,7 @@ struct StylePreset: Identifiable {
             id: "neon", name: "Néon", icon: "sparkles",
             blurb: "Couleurs électriques, zooms et glitch sur le rythme",
             grade: ColorGrade.presets[1].grade, motionBlur: 1,
-            transition: CutTransition(type: 2, duration: 0.25), beatEvery: 2,
+            transition: CutTransition(type: 2, duration: 0.25), beatEvery: 2, sound: .whooshFast,
             effects: { time, index, room in
                 var list = [EffectModel.zoom(start: time, duration: min(0.3, room), peak: 1.25)]
                 list.append(.glow(start: time, duration: min(0.4, room), strength: 0.5))
@@ -34,7 +36,7 @@ struct StylePreset: Identifiable {
             id: "cinema", name: "Cinéma", icon: "film",
             blurb: "Doux et sombre, zooms lents, passages par le noir",
             grade: ColorGrade.presets[2].grade, motionBlur: 0.8,
-            transition: CutTransition(type: 4, duration: 0.5), beatEvery: 4,
+            transition: CutTransition(type: 4, duration: 0.5), beatEvery: 4, sound: .bass,
             effects: { time, _, room in
                 var zoom = EffectModel.zoom(start: time, duration: min(0.9, room), peak: 1.12)
                 zoom.curve = 1
@@ -44,7 +46,7 @@ struct StylePreset: Identifiable {
             id: "rapide", name: "Ultra rapide", icon: "bolt.fill",
             blurb: "Un effet à chaque temps : secousses, flashs, balayages",
             grade: ColorGrade.presets[4].grade, motionBlur: 1.2,
-            transition: CutTransition(type: 5, duration: 0.2), beatEvery: 1,
+            transition: CutTransition(type: 5, duration: 0.2), beatEvery: 1, sound: .glitch,
             effects: { time, index, room in
                 var list = [EffectModel.zoom(start: time, duration: min(0.2, room), peak: 1.2)]
                 list.append(.shake(start: time, duration: min(0.2, room), amplitude: 0.012))
@@ -55,7 +57,7 @@ struct StylePreset: Identifiable {
             id: "sombre", name: "Sombre", icon: "moon.stars.fill",
             blurb: "Froid et contrasté : zooms secs, flou et bords colorés sur le pic",
             grade: ColorGrade(exposure: -0.15, contrast: 1.35, saturation: 0.85, warmth: -0.45, vignette: 0.6), motionBlur: 1.6,
-            transition: CutTransition(type: 5, duration: 0.3), beatEvery: 4,
+            transition: CutTransition(type: 5, duration: 0.3), beatEvery: 4, sound: .impact,
             effects: { time, _, room in
                 var zoom = EffectModel.zoom(start: time, duration: min(0.35, room), peak: 1.3)
                 zoom.curve = 2
@@ -65,7 +67,7 @@ struct StylePreset: Identifiable {
             id: "lueur", name: "Lueur", icon: "sun.max.fill",
             blurb: "Couleurs vives bleu/violet, halos et flashs doux sur le rythme",
             grade: ColorGrade(exposure: 0.05, contrast: 1.2, saturation: 1.5, warmth: -0.25, vignette: 0.3), motionBlur: 0.8,
-            transition: CutTransition(type: 0, duration: 0.25), beatEvery: 2,
+            transition: CutTransition(type: 0, duration: 0.25), beatEvery: 2, sound: .whoosh,
             effects: { time, index, room in
                 var list = [EffectModel.glow(start: time, duration: min(0.6, room), strength: 0.8)]
                 if index % 2 == 0 { list.append(.flash(start: time, duration: min(0.1, room), strength: 0.2)) }
@@ -76,7 +78,7 @@ struct StylePreset: Identifiable {
             id: "impact", name: "Impact", icon: "burst.fill",
             blurb: "Le grand classique gaming : zoom, secousse, flash et halo",
             grade: ColorGrade.presets[3].grade, motionBlur: 1,
-            transition: CutTransition(type: 0, duration: 0.2), beatEvery: 2,
+            transition: CutTransition(type: 0, duration: 0.2), beatEvery: 2, sound: .impact,
             effects: { time, _, room in
                 var zoom = EffectModel.zoom(start: time, duration: min(0.55, room), peak: 1.35)
                 zoom.curve = 2

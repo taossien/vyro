@@ -145,8 +145,67 @@ final class EditorViewModel: ObservableObject {
             motionBlur: motionBlurStrength,
             grade: colorGrade,
             texts: texts,
-            keyframes: keyframes
+            keyframes: keyframes,
+            sounds: soundPlans
         )
+    }
+
+
+    // MARK: - Effets sonores
+
+    @Published var selectedSoundID: UUID?
+    var sounds: [SoundMark] { (project.tracks.first?.clips.first?.sounds ?? []).sorted { $0.time < $1.time } }
+    var selectedSound: SoundMark? { sounds.first { $0.id == selectedSoundID } }
+
+    private var soundPlans: [SoundPlan] {
+        sounds.compactMap { mark in
+            guard let kind = SoundKind(rawValue: mark.kind), let url = kind.url else { return nil }
+            return SoundPlan(url: url, start: mark.time - kind.lead, volume: mark.volume)
+        }
+    }
+
+    func addSound(_ kind: SoundKind, at time: Double? = nil) {
+        guard hasClip, duration > 0 else { return }
+        let at = min(max(snap(time ?? playhead), 0), duration)
+        let mark = SoundMark(id: UUID(), time: at, kind: kind.rawValue)
+        mutateClip { $0.sounds = ($0.sounds ?? []) + [mark] }
+        selectedSoundID = mark.id
+        scheduleRebuild()
+    }
+
+    func updateSound(id: UUID, _ change: (inout SoundMark) -> Void) {
+        mutateClip { clip in
+            guard var list = clip.sounds, let index = list.firstIndex(where: { $0.id == id }) else { return }
+            change(&list[index])
+            list[index].time = min(max(list[index].time, 0), max(duration, 0))
+            clip.sounds = list
+        }
+        scheduleRebuild()
+    }
+
+    func removeSound(id: UUID) {
+        mutateClip { $0.sounds = ($0.sounds ?? []).filter { $0.id != id } }
+        if selectedSoundID == id { selectedSoundID = nil }
+        scheduleRebuild()
+    }
+
+    func clearSounds() {
+        mutateClip { $0.sounds = nil }
+        selectedSoundID = nil
+        scheduleRebuild()
+    }
+
+    /// Pose le son choisi sur chaque temps fort de la musique (ou à intervalle régulier sans musique).
+    func addSoundsOnBeats(_ kind: SoundKind, every: Int = 2) {
+        guard hasClip, duration > 0 else { return }
+        var marks = rhythmMarks(every: every)
+        marks = marks.filter { $0 > 0.2 }
+        let existing = sounds
+        let created = marks.map { SoundMark(id: UUID(), time: $0, kind: kind.rawValue, volume: 0.7) }
+            .filter { new in !existing.contains { $0.kind == new.kind && abs($0.time - new.time) < 0.2 } }
+        guard !created.isEmpty else { return }
+        mutateClip { $0.sounds = ($0.sounds ?? []) + created }
+        scheduleRebuild()
     }
 
     // MARK: - Mouvement (images clés)
@@ -586,6 +645,7 @@ final class EditorViewModel: ObservableObject {
         clip.colorGrade = nil
         clip.texts = nil
         clip.keyframes = nil
+        clip.sounds = nil
     }
 
     /// Réordonne / retire des clips en gardant les réglages globaux sur le premier.
@@ -604,6 +664,7 @@ final class EditorViewModel: ObservableObject {
             clips[0].colorGrade = globals.colorGrade
             clips[0].texts = globals.texts
             clips[0].keyframes = globals.keyframes
+            clips[0].sounds = globals.sounds
         }
     }
 
@@ -617,19 +678,18 @@ final class EditorViewModel: ObservableObject {
     @Published private(set) var appliedStyleID: String?
 
     /// Applique un style : look, flou, transitions sur chaque coupure, effets sur les temps forts.
-    func applyStyle(_ style: StylePreset) {
-        guard hasClip, duration > 0 else { return }
+    /// Instants forts du montage : temps de la musique (un sur `every`), sinon coupures puis intervalle régulier.
+    func rhythmMarks(every: Int) -> [Double] {
         var marks: [Double]
         let beats = beatMarks
         if beats.count >= 2 {
-            marks = beats.enumerated().filter { $0.offset % max(style.beatEvery, 1) == 0 }.map { $0.element }
+            marks = beats.enumerated().filter { $0.offset % max(every, 1) == 0 }.map { $0.element }
         } else {
-            // Sans musique : sur chaque coupure, puis à intervalle régulier.
             marks = spans.dropFirst().map { $0.start }
             var t = 1.5
             while t < duration - 0.3 {
                 marks.append(t)
-                t += 1.6 * Double(max(style.beatEvery, 1))
+                t += 1.6 * Double(max(every, 1))
             }
         }
         marks = marks.filter { $0 > 0.2 && $0 < duration - 0.3 }.sorted()
@@ -639,6 +699,12 @@ final class EditorViewModel: ObservableObject {
             let step = Double(spaced.count) / 80
             spaced = (0..<80).map { spaced[Int(Double($0) * step)] }
         }
+        return spaced
+    }
+
+    func applyStyle(_ style: StylePreset) {
+        guard hasClip, duration > 0 else { return }
+        let spaced = rhythmMarks(every: style.beatEvery)
         var list: [EffectModel] = []
         for (index, mark) in spaced.enumerated() {
             list += style.effects(mark, index, max(duration - mark, 0.1))
@@ -647,6 +713,7 @@ final class EditorViewModel: ObservableObject {
             clips[0].effects = list
             clips[0].colorGrade = style.grade.isNeutral ? nil : style.grade
             clips[0].motionBlur = style.motionBlur
+            clips[0].sounds = style.sound.map { kind in spaced.map { SoundMark(id: UUID(), time: $0, kind: kind.rawValue, volume: 0.7) } }
             for index in clips.indices { clips[index].transition = index > 0 ? style.transition : nil }
         }
         appliedStyleID = style.id
@@ -659,6 +726,7 @@ final class EditorViewModel: ObservableObject {
             clips[0].effects = []
             clips[0].colorGrade = nil
             clips[0].motionBlur = nil
+            clips[0].sounds = nil
             for index in clips.indices { clips[index].transition = nil }
         }
         appliedStyleID = nil

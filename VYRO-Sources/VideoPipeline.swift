@@ -26,6 +26,13 @@ struct CutMark {
     let duration: Double
 }
 
+/// Un son à insérer : fichier, instant de départ dans le montage, volume.
+struct SoundPlan {
+    let url: URL
+    let start: Double
+    let volume: Double
+}
+
 struct RenderPlan {
     var clips: [ClipPlan]
     /// Effets globaux, positionnés sur la durée totale du montage.
@@ -42,6 +49,7 @@ struct RenderPlan {
     var grade: ColorGrade?
     var texts: [TextOverlay] = []
     var keyframes: [Keyframe] = []
+    var sounds: [SoundPlan] = []
 
     /// Faux si le plan ne modifie pas les images (aucun effet actif, pas de stabilisation, un seul clip).
     var needsRendering: Bool {
@@ -187,7 +195,7 @@ enum VideoPipeline {
             let item = loaded[0]
             let map = timeMap(for: item)
             let isPlain = item.plan.speedPoints.isEmpty && abs(item.plan.speed - 1) < 0.001 && !isTrimmed(item)
-                && plan.musicURL == nil && abs(plan.originalVolume - 1) < 0.01
+                && plan.musicURL == nil && plan.sounds.isEmpty && abs(plan.originalVolume - 1) < 0.01
             if isPlain {
                 var videoComposition: AVMutableVideoComposition?
                 if plan.needsRendering {
@@ -294,6 +302,26 @@ enum VideoPipeline {
                     mixParameters.append(parameters)
                 }
             }
+        }
+        // Effets sonores : une piste audio par son, pour qu'ils puissent se chevaucher.
+        for sound in plan.sounds.prefix(60) {
+            let asset = AVURLAsset(url: sound.url)
+            guard let source = try? await asset.loadTracks(withMediaType: .audio).first,
+                  let length = try? await asset.load(.duration), length.seconds.isFinite,
+                  sound.start < outputDuration.seconds,
+                  let track = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid)
+            else { continue }
+            // Un son qui commencerait avant 0 est tronqué à son début.
+            let skip = max(-sound.start, 0)
+            let at = CMTime(seconds: max(sound.start, 0), preferredTimescale: 600)
+            let usable = CMTimeMinimum(length - CMTime(seconds: skip, preferredTimescale: 600), outputDuration - at)
+            guard usable > .zero else { continue }
+            try? track.insertTimeRange(
+                CMTimeRange(start: CMTime(seconds: skip, preferredTimescale: 600), duration: usable), of: source, at: at
+            )
+            let parameters = AVMutableAudioMixInputParameters(track: track)
+            parameters.setVolume(Float(sound.volume), at: .zero)
+            mixParameters.append(parameters)
         }
         if !mixParameters.isEmpty {
             let mix = AVMutableAudioMix()

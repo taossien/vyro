@@ -73,6 +73,8 @@ struct ClipModel: Codable, Identifiable, Equatable {
     var texts: [TextOverlay]?
     /// Images clés de mouvement (globales, temps du montage).
     var keyframes: [Keyframe]?
+    /// Effets sonores posés sur le montage (globaux, temps du montage).
+    var sounds: [SoundMark]?
     /// Transition à l'entrée de ce clip (ignorée pour le premier clip).
     var transition: CutTransition?
 }
@@ -160,4 +162,14 @@ struct ProjectModel: Codable, Identifiable, Equatable {
     var canvasHeight: Int = 1920
     var tracks: [TrackModel] = []
     var schemaVersion: Int = Schema.version
+}
+
+
+/// Un effet sonore posé sur le montage (voir Sounds.swift pour le catalogue).
+struct SoundMark: Codable, Identifiable, Equatable {
+    var id: UUID
+    /// Instant du coup (impact, fin du riser), en secondes du montage.
+    var time: Double
+    var kind: Int
+    var volume: Double = 0.8
 }

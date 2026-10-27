@@ -14,7 +14,7 @@ struct EditorView: View {
     @StateObject private var vm: EditorViewModel
     @State private var panel: ToolPanel?
 
-    enum ToolPanel { case speed, stabilization, trim, music, render, look, text, motion, transition, style }
+    enum ToolPanel { case speed, stabilization, trim, music, render, look, text, motion, transition, style, sounds }
     @AppStorage("vyro.advanced") private var advanced = false
     @State private var showFilePicker = false
     @State private var pickingMusic = true
@@ -41,6 +41,10 @@ struct EditorView: View {
                     vm.selectedEffectID = nil
                     panel = .motion
                     vm.selectKeyframe(id: id)
+                }, onSelectSound: { id in
+                    vm.selectedEffectID = nil
+                    panel = .sounds
+                    vm.selectedSoundID = id
                 }, advanced: advanced)
                 .padding(.horizontal, 12)
                 .padding(.top, 8)
@@ -250,6 +254,10 @@ struct EditorView: View {
                 vm.selectedEffectID = nil
                 panel = panel == .style ? nil : .style
             }
+            toolButton("Sons", icon: "speaker.wave.3.fill", color: .mint, active: panel == .sounds || !vm.sounds.isEmpty) {
+                vm.selectedEffectID = nil
+                panel = panel == .sounds ? nil : .sounds
+            }
             if advanced {
             toolButton("Zoom", icon: "plus.magnifyingglass", color: Theme.accent, active: vm.selectedEffect?.type == .zoom) {
                 haptic()
@@ -352,6 +360,8 @@ struct EditorView: View {
             panelContainer(title: effect.title, icon: effect.systemImage) { effectPanel(effect) }
         } else if panel == .speed {
             panelContainer(title: "Vitesse", icon: "speedometer") { speedPanel }
+        } else if panel == .sounds {
+            panelContainer(title: "Sons", icon: "speaker.wave.3.fill") { soundsPanel }
         } else if panel == .style {
             panelContainer(title: "Style", icon: "wand.and.stars") { stylePanel }
         } else if panel == .render {
@@ -423,6 +433,53 @@ struct EditorView: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 14)
             .background(RoundedRectangle(cornerRadius: 14).fill(Color.white.opacity(0.08)))
+        }
+    }
+
+    private var soundsPanel: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Touche un son pour le poser à la tête de lecture.")
+                .font(.caption)
+                .foregroundColor(Theme.textSecondary)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(SoundKind.allCases) { kind in
+                        Button { haptic(); vm.addSound(kind) } label: {
+                            VStack(spacing: 4) {
+                                Image(systemName: kind.icon).font(.title3)
+                                Text(kind.title).font(.caption2.weight(.semibold))
+                            }
+                            .frame(width: 74)
+                            .padding(.vertical, 10)
+                            .background(RoundedRectangle(cornerRadius: 12).fill(Color.white.opacity(0.08)))
+                            .foregroundColor(.mint)
+                        }
+                    }
+                }
+            }
+            if let mark = vm.selectedSound {
+                let id = mark.id
+                Text(SoundKind(rawValue: mark.kind)?.title ?? "Son")
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(Theme.textPrimary)
+                sliderRow(label: "Volume",
+                          value: Binding(get: { mark.volume }, set: { v in vm.updateSound(id: id) { $0.volume = v } }),
+                          range: 0.05...1, display: String(format: "%.0f %%", mark.volume * 100))
+                sliderRow(label: "Instant",
+                          value: Binding(get: { mark.time }, set: { v in vm.updateSound(id: id) { $0.time = vm.snap(v) } }),
+                          range: 0...max(vm.duration, 0.5), display: String(format: "%.1f s", mark.time))
+                actionButton("Supprimer ce son", icon: "trash", tint: .red) { vm.removeSound(id: id) }
+            }
+            actionButton("Sur chaque temps fort : Impact", icon: "metronome", tint: .mint) { vm.addSoundsOnBeats(.impact) }
+            actionButton("Sur chaque temps fort : Whoosh", icon: "metronome", tint: .mint) { vm.addSoundsOnBeats(.whoosh) }
+            if !vm.sounds.isEmpty {
+                Text(String(vm.sounds.count) + " sons posés")
+                    .font(.caption)
+                    .foregroundColor(Theme.textSecondary)
+                Button("Tout retirer") { haptic(); vm.clearSounds() }
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(.red)
+            }
         }
     }
 
@@ -1070,10 +1127,11 @@ struct EditorTimeline: View {
     var onSelectEffect: (UUID) -> Void
     var onSelectText: (UUID) -> Void
     var onSelectKeyframe: (UUID) -> Void
+    var onSelectSound: (UUID) -> Void
     /// Mode simple : une seule piste pour tous les effets, plus texte et vitesse.
     var advanced = true
 
-    private var laneCount: Int { advanced ? 7 : 3 }
+    private var laneCount: Int { advanced ? 8 : 4 }
     private let laneHeight: CGFloat = 19
     private let laneSpacing: CGFloat = 3
 
@@ -1093,10 +1151,12 @@ struct EditorTimeline: View {
                         speedLane(width: width, total: total)
                         textLane(width: width, total: total)
                         keyframeLane(width: width, total: total)
+                        soundLane(width: width, total: total)
                     } else {
                         effectLane([.zoom, .shake, .glitch, .flash, .glow], color: Theme.accent, icon: "burst.fill", width: width, total: total)
                         speedLane(width: width, total: total)
                         textLane(width: width, total: total)
+                        soundLane(width: width, total: total)
                     }
                 }
                 .padding(.vertical, 8)
@@ -1174,6 +1234,27 @@ struct EditorTimeline: View {
                             }
                     )
                     .onTapGesture { onSelectKeyframe(frame.id) }
+            }
+        }
+        .frame(height: laneHeight)
+        .clipped()
+    }
+
+    private func soundLane(width: CGFloat, total: Double) -> some View {
+        ZStack(alignment: .leading) {
+            RoundedRectangle(cornerRadius: 5).fill(Color.white.opacity(0.04))
+            Image(systemName: "speaker.wave.2.fill")
+                .font(.system(size: 10))
+                .foregroundColor(Color.mint.opacity(0.5))
+                .padding(.leading, 6)
+            ForEach(vm.sounds) { mark in
+                let selected = mark.id == vm.selectedSoundID
+                Capsule()
+                    .fill(selected ? Color.mint : Color.mint.opacity(0.55))
+                    .frame(width: selected ? 9 : 6, height: laneHeight - 5)
+                    .offset(x: CGFloat(mark.time / total) * width - 3)
+                    .contentShape(Rectangle().inset(by: -6))
+                    .onTapGesture { onSelectSound(mark.id) }
             }
         }
         .frame(height: laneHeight)
