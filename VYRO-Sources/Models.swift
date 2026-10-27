@@ -102,6 +102,8 @@ struct TextOverlay: Codable, Identifiable, Equatable {
     var animation: Int = 1
     /// Police (indice dans fontNames), nil = la première.
     var font: Int?
+    /// Vrai pour les textes créés par les sous-titres automatiques.
+    var subtitle: Bool?
 
     var end: Double { start + duration }
 

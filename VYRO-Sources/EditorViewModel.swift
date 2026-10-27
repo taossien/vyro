@@ -234,6 +234,90 @@ final class EditorViewModel: ObservableObject {
         scheduleRebuild()
     }
 
+    // MARK: Sous-titres automatiques
+
+    @Published var isTranscribing = false
+    @Published var subtitleLanguage = "fr-FR"
+    var subtitleCount: Int { texts.filter { $0.subtitle == true }.count }
+
+    func generateSubtitles() {
+        guard hasClip, !isTranscribing else { return }
+        isTranscribing = true
+        player?.pause()
+        isPlaying = false
+        let language = subtitleLanguage
+        var voicePlan = plan
+        voicePlan.musicURL = nil
+        voicePlan.originalVolume = 1
+        Task {
+            defer { isTranscribing = false }
+            do {
+                guard await SubtitleGenerator.authorize() else { throw SubtitleError.notAuthorized }
+                let built = try await VideoPipeline.build(plan: voicePlan)
+                let audio = try await SubtitleGenerator.exportAudio(of: built.composition)
+                defer { try? FileManager.default.removeItem(at: audio) }
+                let words = try await SubtitleGenerator.transcribe(audio: audio, language: language)
+                let chunks = SubtitleGenerator.chunk(words)
+                let size = (try? FileManager.default.attributesOfItem(atPath: audio.path)[.size] as? Int) ?? 0
+                guard !chunks.isEmpty else {
+                    throw SubtitleError.noSpeech("(son extrait : " + String(size / 1024) + " Ko, mots : " + String(words.count) + ")")
+                }
+                let created = chunks.map { chunk -> TextOverlay in
+                    var overlay = TextOverlay(id: UUID(), text: chunk.text.uppercased(),
+                                              start: chunk.start, duration: max(chunk.end - chunk.start, 0.3))
+                    overlay.y = 0.8
+                    overlay.size = 0.065
+                    overlay.style = 1
+                    overlay.font = 5
+                    overlay.animation = 1
+                    overlay.subtitle = true
+                    return overlay
+                }
+                mutateClip { clip in
+                    let others = (clip.texts ?? []).filter { $0.subtitle != true }
+                    clip.texts = others + created
+                }
+                selectedTextID = nil
+                scheduleRebuild()
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    func removeSubtitles() {
+        mutateClip { clip in
+            let others = (clip.texts ?? []).filter { $0.subtitle != true }
+            clip.texts = others.isEmpty ? nil : others
+        }
+        if let id = selectedTextID, !texts.contains(where: { $0.id == id }) { selectedTextID = nil }
+        scheduleRebuild()
+    }
+
+    /// Change le style de tous les sous-titres d'un coup.
+    func updateAllSubtitles(_ change: (inout TextOverlay) -> Void) {
+        mutateClip { clip in
+            guard var list = clip.texts else { return }
+            for index in list.indices where list[index].subtitle == true { change(&list[index]) }
+            clip.texts = list
+        }
+        scheduleRebuild()
+    }
+
+    /// Copie un fichier vidéo choisi dans Fichiers puis l'ajoute au montage.
+    func importVideoFile(from picked: URL) {
+        let scoped = picked.startAccessingSecurityScopedResource()
+        defer { if scoped { picked.stopAccessingSecurityScopedResource() } }
+        let destination = ProjectStore.mediaDirectory
+            .appendingPathComponent(UUID().uuidString + "." + (picked.pathExtension.isEmpty ? "mp4" : picked.pathExtension))
+        do {
+            try FileManager.default.copyItem(at: picked, to: destination)
+            loadClip(at: destination)
+        } catch {
+            errorMessage = "Impossible de copier cette vidéo : " + error.localizedDescription
+        }
+    }
+
     func selectText(id: UUID) {
         selectedTextID = id
         if let text = texts.first(where: { $0.id == id }) { seek(to: min(text.start + 0.05, max(duration - 0.05, 0))) }

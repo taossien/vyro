@@ -15,7 +15,8 @@ struct EditorView: View {
     @State private var panel: ToolPanel?
 
     enum ToolPanel { case speed, stabilization, trim, music, render, look, text, motion, transition }
-    @State private var showMusicPicker = false
+    @State private var showFilePicker = false
+    @State private var pickingMusic = true
 
     init(project: ProjectModel? = nil) {
         _vm = StateObject(wrappedValue: EditorViewModel(project: project))
@@ -79,8 +80,9 @@ struct EditorView: View {
                 vm.loadClip(at: url)
             }
         }
-        .fileImporter(isPresented: $showMusicPicker, allowedContentTypes: [.audio]) { result in
-            if case .success(let url) = result { vm.importMusic(from: url) }
+        .fileImporter(isPresented: $showFilePicker, allowedContentTypes: [.audio, .movie, .mpeg4Movie, .quickTimeMovie]) { result in
+            guard case .success(let url) = result else { return }
+            if pickingMusic { vm.importMusic(from: url) } else { vm.importVideoFile(from: url) }
         }
         .sheet(isPresented: $vm.showExportDone) {
             ExportDoneView(url: vm.exportedURL)
@@ -133,6 +135,9 @@ struct EditorView: View {
                                 .background(Capsule().fill(Theme.accent))
                                 .foregroundColor(.white)
                         }
+                        Button("Depuis Fichiers") { pickingMusic = false; showFilePicker = true }
+                            .font(.footnote)
+                            .foregroundColor(Theme.textSecondary)
                         #if DEBUG
                         Button("Charger un clip de test") { vm.loadDemoClip() }
                             .font(.footnote)
@@ -281,7 +286,6 @@ struct EditorView: View {
             toolButton("Texte", icon: "textformat", color: .white, active: panel == .text || !vm.texts.isEmpty) {
                 vm.selectedEffectID = nil
                 panel = panel == .text ? nil : .text
-                if panel == .text, vm.texts.isEmpty { vm.addText() }
             }
             toolButton("Look", icon: "camera.filters", color: .purple, active: panel == .look || !vm.colorGrade.isNeutral) {
                 vm.selectedEffectID = nil
@@ -690,11 +694,59 @@ struct EditorView: View {
         }
     }
 
+    private var subtitleSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Sous-titres automatiques")
+                .font(.caption.weight(.semibold))
+                .foregroundColor(Theme.textSecondary)
+            HStack(spacing: 8) {
+                ForEach(Array(SubtitleGenerator.languages.enumerated()), id: \.offset) { _, entry in
+                    chip(entry.name, selected: vm.subtitleLanguage == entry.code, tint: .mint) { vm.subtitleLanguage = entry.code }
+                }
+            }
+            if vm.isTranscribing {
+                HStack(spacing: 8) {
+                    ProgressView()
+                    Text("Transcription en cours…").font(.caption).foregroundColor(Theme.textSecondary)
+                }
+            } else {
+                actionButton(vm.subtitleCount > 0 ? "Regénérer les sous-titres" : "Générer les sous-titres",
+                             icon: "captions.bubble", tint: .mint) { vm.generateSubtitles() }
+            }
+            if vm.subtitleCount > 0 {
+                Text(String(vm.subtitleCount) + " sous-titres. Style de tous les sous-titres :")
+                    .font(.caption)
+                    .foregroundColor(Theme.textSecondary)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(Array(TextOverlay.styleNames.enumerated()), id: \.offset) { index, name in
+                            chip(name, selected: false) { vm.updateAllSubtitles { $0.style = index } }
+                        }
+                        ForEach(Array(TextOverlay.fontNames.enumerated()), id: \.offset) { index, name in
+                            chip(name, selected: false, tint: .mint) { vm.updateAllSubtitles { $0.font = index } }
+                        }
+                    }
+                }
+                HStack(spacing: 10) {
+                    ForEach(Array(TextOverlay.palette.enumerated()), id: \.offset) { index, entry in
+                        Button { vm.updateAllSubtitles { $0.colorIndex = index } } label: {
+                            Circle().fill(Color(red: entry.r, green: entry.g, blue: entry.b)).frame(width: 26, height: 26)
+                        }
+                    }
+                    Spacer()
+                    Button(role: .destructive) { vm.removeSubtitles() } label: { Image(systemName: "trash") }
+                }
+            }
+        }
+    }
+
     private var textPanel: some View {
         VStack(alignment: .leading, spacing: 10) {
+            subtitleSection
+            Divider().background(Color.white.opacity(0.1))
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
-                    ForEach(Array(vm.texts.enumerated()), id: \.element.id) { index, item in
+                    ForEach(Array(vm.texts.filter { $0.subtitle != true }.enumerated()), id: \.element.id) { index, item in
                         chip("T" + String(index + 1), selected: item.id == vm.selectedTextID) { vm.selectText(id: item.id) }
                     }
                     chip("+ Ajouter", selected: false) { vm.addText() }
@@ -797,7 +849,7 @@ struct EditorView: View {
                 Text("Ajoute un morceau : VYRO détecte son rythme, l'affiche sur la timeline et aimante tes effets dessus.")
                     .font(.caption)
                     .foregroundColor(Theme.textSecondary)
-                actionButton("Choisir un morceau", icon: "music.note.list", tint: .mint) { showMusicPicker = true }
+                actionButton("Choisir un morceau", icon: "music.note.list", tint: .mint) { pickingMusic = true; showFilePicker = true }
             } else {
                 if vm.isAnalyzingBeats {
                     HStack(spacing: 8) {
@@ -830,7 +882,7 @@ struct EditorView: View {
                     actionButton("Zoom / 2 temps", icon: "wand.and.stars", tint: .mint) { vm.autoZoomOnBeats(every: 2) }
                 }
                 HStack(spacing: 10) {
-                    actionButton("Changer", icon: "arrow.triangle.2.circlepath", tint: Theme.accent) { showMusicPicker = true }
+                    actionButton("Changer", icon: "arrow.triangle.2.circlepath", tint: Theme.accent) { pickingMusic = true; showFilePicker = true }
                     actionButton("Retirer", icon: "trash", tint: .red) { vm.removeMusic() }
                 }
             }

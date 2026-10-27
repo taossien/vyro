@@ -84,3 +84,9 @@ Limites connues : un seul clip par montage, effets positionnés en temps de mont
 ### Transitions
 - Outil Transition : sur la coupure d'entrée d'un clip, au choix flash, zoom, glitch, flou, noir ou whip, avec une durée réglable (0,1 à 1 s).
 - Ce sont des effets de coupure (centrés sur la coupe, sans fondu enchaîné) : chaque image vient d'un seul clip, ce qui garde l'aperçu fluide.
+
+### Sous-titres automatiques
+- Outil Texte : transcription de la voix du montage (reconnaissance vocale d'Apple, sur l'appareil quand c'est possible), en français ou en anglais.
+- Les mots horodatés sont regroupés en sous-titres courts (4 mots au plus), chacun étant un texte modifiable de la piste Texte. Style, police et couleur réglables pour tous d'un coup.
+- Import d'une vidéo depuis Fichiers (en plus de la photothèque).
+- Limites connues : la qualité dépend de la netteté de la voix (la musique forte couvre la parole) ; pas encore de mise en avant du mot prononcé.
