@@ -83,8 +83,9 @@ struct EditorView: View {
                 .disabled(!vm.hasClip || vm.isExporting || vm.isAnalyzing)
                 .accessibilityLabel("Exporter")
 
-                Button {
-                    vm.showImporter = true
+                Menu {
+                    Button { vm.showImporter = true } label: { Label("Depuis Photos", systemImage: "photo.on.rectangle") }
+                    Button { pickingMusic = false; showFilePicker = true } label: { Label("Depuis Fichiers, iCloud, clé USB", systemImage: "folder") }
                 } label: {
                     Image(systemName: "plus.rectangle.on.rectangle")
                 }
@@ -96,9 +97,10 @@ struct EditorView: View {
                 vm.loadClips(urls)
             }
         }
-        .fileImporter(isPresented: $showFilePicker, allowedContentTypes: [.audio, .movie, .mpeg4Movie, .quickTimeMovie]) { result in
-            guard case .success(let url) = result else { return }
-            if pickingMusic { vm.importMusic(from: url) } else { vm.importVideoFile(from: url) }
+        .fileImporter(isPresented: $showFilePicker, allowedContentTypes: pickingMusic ? [.audio] : [.movie, .mpeg4Movie, .quickTimeMovie],
+                      allowsMultipleSelection: !pickingMusic) { result in
+            guard case .success(let urls) = result, !urls.isEmpty else { return }
+            if pickingMusic { vm.importMusic(from: urls[0]) } else { vm.importVideoFiles(from: urls) }
         }
         .sheet(isPresented: $vm.showExportDone) {
             ExportDoneView(url: vm.exportedURL)
@@ -154,7 +156,7 @@ struct EditorView: View {
                                 .background(Capsule().fill(Theme.accent))
                                 .foregroundColor(.white)
                         }
-                        Button("Depuis Fichiers") { pickingMusic = false; showFilePicker = true }
+                        Button("Depuis Fichiers, iCloud, clé USB") { pickingMusic = false; showFilePicker = true }
                             .font(.footnote)
                             .foregroundColor(Theme.textSecondary)
                         #if DEBUG

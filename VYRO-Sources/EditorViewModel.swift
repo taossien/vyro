@@ -442,6 +442,25 @@ final class EditorViewModel: ObservableObject {
     }
 
     /// Copie un fichier vidéo choisi dans Fichiers puis l'ajoute au montage.
+    /// Import depuis Fichiers (iCloud Drive, clé USB, AirDrop, autre app) : copie locale durable puis ajout.
+    func importVideoFiles(from picked: [URL]) {
+        isImporting = true
+        var copies: [URL] = []
+        var failed = 0
+        for url in picked {
+            let scoped = url.startAccessingSecurityScopedResource()
+            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+            let destination = ProjectStore.mediaDirectory
+                .appendingPathComponent(UUID().uuidString + "." + (url.pathExtension.isEmpty ? "mp4" : url.pathExtension))
+            do {
+                try FileManager.default.copyItem(at: url, to: destination)
+                copies.append(destination)
+            } catch { failed += 1 }
+        }
+        if failed > 0 { errorMessage = "\(failed) fichier(s) n'ont pas pu être copiés. S'ils sont dans iCloud, attends la fin du téléchargement puis réessaie." }
+        if copies.isEmpty { isImporting = false } else { loadClips(copies) }
+    }
+
     func importVideoFile(from picked: URL) {
         let scoped = picked.startAccessingSecurityScopedResource()
         defer { if scoped { picked.stopAccessingSecurityScopedResource() } }
