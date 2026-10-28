@@ -9,6 +9,12 @@ import SwiftUI
 struct VYROApp: App {
     @AppStorage("vyro.onboarded") private var onboarded = false
 
+    init() {
+        #if DEBUG
+        SelfCheck.run()
+        #endif
+    }
+
     var body: some Scene {
         WindowGroup {
             Group {
