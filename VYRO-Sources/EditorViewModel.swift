@@ -450,6 +450,13 @@ final class EditorViewModel: ObservableObject {
         for url in picked {
             let scoped = url.startAccessingSecurityScopedResource()
             defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+            // Garde 1 Go de marge pour l'export : mieux vaut refuser que casser le montage.
+            let size = Int64((try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
+            if size + 1_000_000_000 > ProjectStore.freeBytes {
+                errorMessage = "Pas assez de place sur l'iPhone pour importer cette vidéo. Libère de l'espace puis réessaie."
+                failed = -1
+                break
+            }
             let destination = ProjectStore.mediaDirectory
                 .appendingPathComponent(UUID().uuidString + "." + (url.pathExtension.isEmpty ? "mp4" : url.pathExtension))
             do {

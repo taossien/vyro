@@ -18,6 +18,12 @@ enum ProjectStore {
         return dir
     }
 
+    /// Place libre sur l'iPhone (octets), pour refuser un import qui ne tiendrait pas.
+    static var freeBytes: Int64 {
+        let values = try? mediaDirectory.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
+        return values?.volumeAvailableCapacityForImportantUsage ?? Int64.max
+    }
+
     static var mediaDirectory: URL {
         var dir = documentsDirectory.appendingPathComponent("Media", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)

@@ -17,6 +17,10 @@ struct StyleTemplate: Codable {
     var transition: CutTransition?
     var effects: [EffectModel]
     var sounds: [SoundMark]
+
+    /// Plafonds à l'import : un fichier reçu ne doit pas pouvoir bloquer l'app.
+    static let maxFileBytes = 1_000_000
+    static let maxItems = 400
 }
 
 extension EditorViewModel {
@@ -42,9 +46,15 @@ extension EditorViewModel {
         guard hasClip, duration > 0 else { return }
         let access = url.startAccessingSecurityScopedResource()
         defer { if access { url.stopAccessingSecurityScopedResource() } }
+        let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+        guard size <= StyleTemplate.maxFileBytes else {
+            errorMessage = "Ce fichier est trop gros pour être un style VYRO."
+            return
+        }
         guard let data = try? Data(contentsOf: url),
               let template = try? JSONDecoder().decode(StyleTemplate.self, from: data),
-              template.app == "VYRO", template.duration > 0 else {
+              template.app == "VYRO", template.duration > 0, template.duration.isFinite,
+              template.effects.count <= StyleTemplate.maxItems, template.sounds.count <= StyleTemplate.maxItems else {
             errorMessage = "Ce fichier n'est pas un style VYRO."
             return
         }
@@ -53,10 +63,18 @@ extension EditorViewModel {
 
     func applyTemplate(_ template: StyleTemplate) {
         let k = duration / template.duration
+        // Si la musique donne des temps forts, chaque effet est recalé sur le plus proche
+        // (à 0,3 s près) : le style retombe sur le rythme de CE montage, pas seulement étiré.
+        let marks = beatMarks.count >= 2 ? rhythmMarks(every: 1) : []
+        func snapped(_ time: Double) -> Double {
+            guard let nearest = marks.min(by: { abs($0 - time) < abs($1 - time) }),
+                  abs(nearest - time) <= 0.3 else { return time }
+            return nearest
+        }
         var effects: [EffectModel] = []
         for var effect in template.effects {
             effect.id = UUID()
-            effect.start *= k
+            effect.start = snapped(effect.start * k)
             guard effect.start < duration - 0.05 else { continue }
             effect.duration = min(effect.duration, max(duration - effect.start, 0.1))
             effects.append(effect)
@@ -64,7 +82,7 @@ extension EditorViewModel {
         var sounds: [SoundMark] = []
         for var mark in template.sounds {
             mark.id = UUID()
-            mark.time *= k
+            mark.time = snapped(mark.time * k)
             if mark.time < duration { sounds.append(mark) }
         }
         mutateAllForTemplate { clips in
