@@ -279,125 +279,135 @@ struct EditorView: View {
 
     // MARK: Barre d'outils
 
-    private var toolbar: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-        HStack(spacing: 0) {
-            toolButton("Impact", icon: "burst.fill", color: .yellow, active: false) {
-                haptic()
-                panel = nil
-                vm.addImpact()
-            }
-            toolButton("Style", icon: "wand.and.stars", color: Theme.accent, active: panel == .style || vm.appliedStyleID != nil) {
-                vm.selectedEffectID = nil
-                panel = panel == .style ? nil : .style
-            }
-            toolButton("Sons", icon: "speaker.wave.3.fill", color: .mint, active: panel == .sounds || !vm.sounds.isEmpty) {
-                vm.selectedEffectID = nil
-                panel = panel == .sounds ? nil : .sounds
-            }
+    // MARK: Barre d'outils : 5 familles (au lieu de 22 boutons à faire défiler)
+
+    enum ToolGroup { case effects, edit, sound, look }
+    @State private var toolGroup: ToolGroup?
+
+    private func effectTool(_ title: String, icon: String, color: Color, type: EffectModel.EffectType?, add: @escaping () -> Void) -> some View {
+        toolButton(title, icon: icon, color: color, active: type != nil && vm.selectedEffect?.type == type) {
+            haptic()
+            panel = nil
+            add()
+        }
+    }
+
+    private func panelTool(_ title: String, icon: String, color: Color, target: ToolPanel, active: Bool) -> some View {
+        toolButton(title, icon: icon, color: color, active: panel == target || active) {
+            vm.selectedEffectID = nil
+            panel = panel == target ? nil : target
+        }
+    }
+
+    @ViewBuilder
+    private func groupTools(_ group: ToolGroup) -> some View {
+        switch group {
+        case .effects:
+            effectTool("Impact", icon: "burst.fill", color: .yellow, type: nil) { vm.addImpact() }
             if advanced {
-            toolButton("Zoom", icon: "plus.magnifyingglass", color: Theme.accent, active: vm.selectedEffect?.type == .zoom) {
-                haptic()
-                panel = nil
-                vm.addZoom()
+                effectTool("Zoom", icon: "plus.magnifyingglass", color: Theme.accent, type: .zoom) { vm.addZoom() }
+                effectTool("Smash", icon: "arrow.up.left.and.arrow.down.right", color: .red, type: nil) { vm.addSmash() }
+                effectTool("Hole", icon: "scope", color: .purple, type: nil) { vm.addHole() }
+                effectTool("Shake", icon: "waveform.path", color: Theme.accentBlue, type: .shake) { vm.addShake() }
+                effectTool("Glitch", icon: "square.stack.3d.down.right", color: .pink, type: .glitch) { vm.addGlitch() }
+                effectTool("Flash", icon: "bolt.fill", color: .white, type: .flash) { vm.addFlash() }
+                effectTool("Halo", icon: "sun.max.fill", color: .orange, type: .glow) { vm.addGlow() }
+                effectTool("Étincelles", icon: "sparkles", color: .cyan, type: .sparkles) { vm.addSparkles() }
+                effectTool("Anneau", icon: "circle.dashed", color: .mint, type: .ring) { vm.addRing() }
+                effectTool("Aberration", icon: "circle.lefthalf.filled.righthalf.striped.horizontal", color: .red, type: .chroma) { vm.addChroma() }
             }
-            toolButton("Smash", icon: "arrow.up.left.and.arrow.down.right", color: .red, active: false) {
-                haptic()
-                panel = nil
-                vm.addSmash()
-            }
-            toolButton("Coupe auto", icon: "scissors.badge.ellipsis", color: .green, active: false) {
-                haptic()
-                panel = nil
-                vm.autoCutOnBeats()
-            }
-            toolButton("Hole", icon: "scope", color: .purple, active: false) {
-                haptic()
-                panel = nil
-                vm.addHole()
-            }
-            toolButton("Shake", icon: "waveform.path", color: Theme.accentBlue, active: vm.selectedEffect?.type == .shake) {
-                haptic()
-                panel = nil
-                vm.addShake()
-            }
-            toolButton("Glitch", icon: "square.stack.3d.down.right", color: .pink, active: vm.selectedEffect?.type == .glitch) {
-                haptic()
-                panel = nil
-                vm.addGlitch()
-            }
-            toolButton("Flash", icon: "bolt.fill", color: .white, active: vm.selectedEffect?.type == .flash) {
-                haptic()
-                panel = nil
-                vm.addFlash()
-            }
-            toolButton("Halo", icon: "sun.max.fill", color: .orange, active: vm.selectedEffect?.type == .glow) {
-                haptic()
-                panel = nil
-                vm.addGlow()
-            }
-            toolButton("Étincelles", icon: "sparkles", color: .cyan, active: vm.selectedEffect?.type == .sparkles) {
-                haptic()
-                panel = nil
-                vm.addSparkles()
-            }
-            toolButton("Anneau", icon: "circle.dashed", color: .mint, active: vm.selectedEffect?.type == .ring) {
-                haptic()
-                panel = nil
-                vm.addRing()
-            }
-            toolButton("Aberration", icon: "circle.lefthalf.filled.righthalf.striped.horizontal", color: .red, active: vm.selectedEffect?.type == .chroma) {
-                haptic()
-                panel = nil
-                vm.addChroma()
-            }
-            }
-            toolButton("Couper", icon: "scissors", color: .orange, active: panel == .trim || vm.isTrimmed) {
-                vm.selectedEffectID = nil
-                panel = panel == .trim ? nil : .trim
-            }
-            toolButton("Vitesse", icon: "speedometer", color: .yellow, active: panel == .speed) {
-                vm.selectedEffectID = nil
-                panel = panel == .speed ? nil : .speed
-            }
+        case .edit:
+            panelTool("Couper", icon: "scissors", color: .orange, target: .trim, active: vm.isTrimmed)
+            panelTool("Vitesse", icon: "speedometer", color: .yellow, target: .speed, active: false)
             if advanced {
-            toolButton("Stable", icon: "gyroscope", color: .green, active: panel == .stabilization || vm.stabilizationEnabled) {
-                vm.selectedEffectID = nil
-                panel = panel == .stabilization ? nil : .stabilization
+                effectTool("Coupe auto", icon: "scissors.badge.ellipsis", color: .green, type: nil) { vm.autoCutOnBeats() }
+                panelTool("Stable", icon: "gyroscope", color: .green, target: .stabilization, active: vm.stabilizationEnabled)
+                panelTool("Transition", icon: "arrow.left.arrow.right", color: .orange, target: .transition,
+                          active: vm.clips.contains { $0.transition != nil })
+                panelTool("Mouvement", icon: "arrow.up.left.and.arrow.down.right", color: .cyan, target: .motion,
+                          active: !vm.keyframes.isEmpty)
             }
-            toolButton("Transition", icon: "arrow.left.arrow.right", color: .orange, active: panel == .transition || vm.clips.contains { $0.transition != nil }) {
-                vm.selectedEffectID = nil
-                panel = panel == .transition ? nil : .transition
-            }
-            toolButton("Mouvement", icon: "arrow.up.left.and.arrow.down.right", color: .cyan, active: panel == .motion || !vm.keyframes.isEmpty) {
-                vm.selectedEffectID = nil
-                panel = panel == .motion ? nil : .motion
-            }
-            }
-            toolButton("Texte", icon: "textformat", color: .white, active: panel == .text || !vm.texts.isEmpty) {
-                vm.selectedEffectID = nil
-                panel = panel == .text ? nil : .text
-            }
-            toolButton("Look", icon: "camera.filters", color: .purple, active: panel == .look || !vm.colorGrade.isNeutral) {
-                vm.selectedEffectID = nil
-                panel = panel == .look ? nil : .look
-            }
+        case .sound:
+            panelTool("Sons", icon: "speaker.wave.3.fill", color: .mint, target: .sounds, active: !vm.sounds.isEmpty)
+            panelTool("Musique", icon: "music.note", color: .mint, target: .music, active: vm.musicName != nil)
+        case .look:
+            panelTool("Look", icon: "camera.filters", color: .purple, target: .look, active: !vm.colorGrade.isNeutral)
             if advanced {
-            toolButton("Rendu", icon: "sparkles", color: .cyan, active: panel == .render) {
-                vm.selectedEffectID = nil
-                panel = panel == .render ? nil : .render
-            }
-            }
-            toolButton("Musique", icon: "music.note", color: .mint, active: panel == .music || vm.musicName != nil) {
-                vm.selectedEffectID = nil
-                panel = panel == .music ? nil : .music
+                panelTool("Rendu", icon: "sparkles", color: .cyan, target: .render, active: false)
             }
         }
-        .padding(.horizontal, 8)
+    }
+
+    private func groupButton(_ title: String, icon: String, color: Color, group: ToolGroup, panels: [ToolPanel], active: Bool) -> some View {
+        let selected = toolGroup == group || panels.contains { panel == $0 }
+        return Button {
+            haptic()
+            vm.selectedEffectID = nil
+            toolGroup = toolGroup == group ? nil : group
+        } label: {
+            VStack(spacing: 4) {
+                Image(systemName: icon)
+                    .font(.system(size: 21))
+                    .foregroundColor(selected || active ? color : Theme.textPrimary)
+                Text(title)
+                    .font(.caption2.weight(.medium))
+                    .foregroundColor(selected || active ? color : Theme.textSecondary)
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .disabled(!vm.hasClip)
+    }
+
+    private var toolbar: some View {
+        VStack(spacing: 6) {
+            if let group = toolGroup {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 0) { groupTools(group) }
+                        .padding(.horizontal, 8)
+                }
+                Divider().background(Color.white.opacity(0.1))
+            }
+            HStack(spacing: 0) {
+                toolButtonFlexible("Style", icon: "wand.and.stars", color: Theme.accent,
+                                   active: panel == .style || vm.appliedStyleID != nil) {
+                    vm.selectedEffectID = nil
+                    toolGroup = nil
+                    panel = panel == .style ? nil : .style
+                }
+                groupButton("Effets", icon: "burst.fill", color: .yellow, group: .effects, panels: [], active: false)
+                groupButton("Montage", icon: "scissors", color: .orange, group: .edit,
+                            panels: [.trim, .speed, .stabilization, .transition, .motion], active: vm.isTrimmed)
+                groupButton("Son", icon: "speaker.wave.3.fill", color: .mint, group: .sound,
+                            panels: [.sounds, .music], active: !vm.sounds.isEmpty || vm.musicName != nil)
+                toolButtonFlexible("Texte", icon: "textformat", color: .white,
+                                   active: panel == .text || !vm.texts.isEmpty) {
+                    vm.selectedEffectID = nil
+                    toolGroup = nil
+                    panel = panel == .text ? nil : .text
+                }
+                groupButton("Look", icon: "camera.filters", color: .purple, group: .look,
+                            panels: [.look, .render], active: !vm.colorGrade.isNeutral)
+            }
+            .padding(.horizontal, 8)
         }
         .padding(.top, 8)
         .padding(.bottom, 6)
         .background(Theme.surface.ignoresSafeArea(edges: .bottom))
+    }
+
+    private func toolButtonFlexible(_ title: String, icon: String, color: Color, active: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(spacing: 4) {
+                Image(systemName: icon)
+                    .font(.system(size: 21))
+                    .foregroundColor(active ? color : Theme.textPrimary)
+                Text(title)
+                    .font(.caption2.weight(.medium))
+                    .foregroundColor(active ? color : Theme.textSecondary)
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .disabled(!vm.hasClip)
     }
 
     private func toolButton(_ title: String, icon: String, color: Color, active: Bool, action: @escaping () -> Void) -> some View {
@@ -1449,7 +1459,9 @@ struct EditorTimeline: View {
                 Image(systemName: "diamond.fill")
                     .font(.system(size: 14))
                     .foregroundColor(frame.id == vm.selectedKeyframeID ? .white : .cyan)
-                    .offset(x: CGFloat(frame.time / total) * width - 7)
+                    .frame(width: 30, height: laneHeight)
+                    .contentShape(Rectangle())
+                    .offset(x: CGFloat(frame.time / total) * width - 15)
                     .gesture(
                         DragGesture(minimumDistance: 4)
                             .onEnded { value in
@@ -1476,9 +1488,9 @@ struct EditorTimeline: View {
                 let selected = mark.id == vm.selectedSoundID
                 Capsule()
                     .fill(selected ? Color.mint : Color.mint.opacity(0.55))
-                    .frame(width: selected ? 9 : 6, height: laneHeight - 5)
+                    .frame(width: selected ? 12 : 9, height: laneHeight - 4)
                     .offset(x: CGFloat(mark.time / total) * width - 3)
-                    .contentShape(Rectangle().inset(by: -6))
+                    .contentShape(Rectangle().inset(by: -10))
                     .onTapGesture { onSelectSound(mark.id) }
             }
         }
