@@ -8,6 +8,7 @@ import PhotosUI
 import UniformTypeIdentifiers
 
 struct MediaImporter: UIViewControllerRepresentable {
+    var onStart: (() -> Void)?
     var onPicked: ([URL]) -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -41,6 +42,7 @@ struct MediaImporter: UIViewControllerRepresentable {
             let providers = results.map(\.itemProvider)
                 .filter { $0.hasItemConformingToTypeIdentifier(UTType.movie.identifier) }
             guard !providers.isEmpty else { return }
+            DispatchQueue.main.async { self.parent.onStart?() }
 
             var urls = [URL?](repeating: nil, count: providers.count)
             let lock = NSLock()
@@ -67,7 +69,8 @@ struct MediaImporter: UIViewControllerRepresentable {
             }
             group.notify(queue: .main) {
                 let picked = urls.compactMap { $0 }
-                if !picked.isEmpty { self.parent.onPicked(picked) }
+                // Même vide : l'éditeur doit retirer son indicateur d'import.
+                self.parent.onPicked(picked)
             }
         }
     }

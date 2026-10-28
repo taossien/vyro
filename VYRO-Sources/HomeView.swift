@@ -147,5 +147,6 @@ struct HomeView: View {
             ProjectStore.delete(id: projects[index].id)
         }
         projects.remove(atOffsets: offsets)
+        ProjectStore.cleanupUnusedMedia()
     }
 }

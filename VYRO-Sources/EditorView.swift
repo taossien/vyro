@@ -31,7 +31,7 @@ struct EditorView: View {
         GeometryReader { geo in
             VStack(spacing: 0) {
                 preview
-                    .frame(height: geo.size.height * ((panel != nil || vm.selectedEffectID != nil) ? 0.2 : 0.28))
+                    .frame(height: geo.size.height * ((panel != nil || vm.selectedEffectID != nil) ? 0.3 : 0.42))
                 transport
                 if vm.hasClip { clipStrip }
                 EditorTimeline(vm: vm, onSelectEffect: { id in
@@ -92,7 +92,7 @@ struct EditorView: View {
             }
         }
         .sheet(isPresented: $vm.showImporter) {
-            MediaImporter { urls in
+            MediaImporter(onStart: { vm.isImporting = true }) { urls in
                 vm.loadClips(urls)
             }
         }
@@ -1315,16 +1315,28 @@ struct EditorView: View {
 
     @ViewBuilder
     private var busyOverlay: some View {
-        if vm.isExporting || vm.isAnalyzing {
+        if vm.isExporting || vm.isAnalyzing || vm.isImporting {
             ZStack {
                 Color.black.opacity(0.65).ignoresSafeArea()
                 VStack(spacing: 14) {
-                    ProgressView(value: vm.isExporting ? vm.exportProgress : vm.analysisProgress)
-                        .progressViewStyle(.linear)
-                        .tint(Theme.accent)
-                        .frame(width: 220)
-                    Text(vm.isExporting ? "Export en cours…" : "Analyse du mouvement…")
-                        .foregroundColor(.white)
+                    if vm.isImporting && !vm.isExporting && !vm.isAnalyzing {
+                        ProgressView().tint(Theme.accent)
+                        Text("Import de la vidéo…\nUne vidéo stockée sur iCloud peut prendre un moment.")
+                            .multilineTextAlignment(.center)
+                            .foregroundColor(.white)
+                    } else {
+                        ProgressView(value: vm.isExporting ? vm.exportProgress : vm.analysisProgress)
+                            .progressViewStyle(.linear)
+                            .tint(Theme.accent)
+                            .frame(width: 220)
+                        Text(vm.isExporting ? "Export en cours…\nNe quitte pas l'app pendant l'export." : "Analyse du mouvement…")
+                            .multilineTextAlignment(.center)
+                            .foregroundColor(.white)
+                        if vm.isExporting {
+                            Button("Annuler l'export") { vm.cancelExport() }
+                                .foregroundColor(.white.opacity(0.8))
+                        }
+                    }
                 }
                 .padding(24)
                 .background(RoundedRectangle(cornerRadius: 16).fill(Theme.surface))
@@ -1345,7 +1357,7 @@ struct EditorTimeline: View {
     var advanced = true
 
     private var laneCount: Int { advanced ? 8 : 4 }
-    private let laneHeight: CGFloat = 19
+    private let laneHeight: CGFloat = 24
     private let laneSpacing: CGFloat = 3
 
     var body: some View {

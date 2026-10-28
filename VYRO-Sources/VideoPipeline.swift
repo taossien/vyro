@@ -43,6 +43,8 @@ struct RenderPlan {
     var outputScale: Double = 1
     /// Cadence forcée (nil = celle des clips). 60 rend zooms et secousses bien plus fluides.
     var fps: Int?
+    /// Aperçu : taille maximale du grand côté (nil = pas de limite). Calculer à 1280 px suffit sur un écran de téléphone.
+    var maxSide: Double?
     /// Musique de fond (nil = aucune), volumes 0...1, décalage de départ dans le morceau.
     var musicURL: URL?
     var musicVolume: Double = 0.8
@@ -129,6 +131,7 @@ enum PipelineError: LocalizedError {
     case invalidDuration
     case noClip
     case exportFailed(String)
+    case cancelled
 
     var errorDescription: String? {
         switch self {
@@ -136,6 +139,7 @@ enum PipelineError: LocalizedError {
         case .invalidDuration: return "La durée de ce clip est invalide."
         case .noClip: return "Le montage ne contient aucun clip."
         case .exportFailed(let detail): return "L'export a échoué : " + detail
+        case .cancelled: return "Export annulé."
         }
     }
 }
@@ -185,18 +189,22 @@ enum VideoPipeline {
         // Le format du montage est celui du premier clip.
         let canvas = loaded[0].orientedSize
         var finalSize = canvas
-        if abs(plan.outputScale - 1) > 0.001 {
+        var sizeScale = plan.outputScale
+        let longSide = max(canvas.width, canvas.height)
+        if let limit = plan.maxSide, longSide * sizeScale > limit { sizeScale = limit / longSide }
+        if abs(sizeScale - 1) > 0.001 {
             finalSize = CGSize(
-                width: (canvas.width * plan.outputScale / 2).rounded() * 2,
-                height: (canvas.height * plan.outputScale / 2).rounded() * 2
+                width: (canvas.width * sizeScale / 2).rounded() * 2,
+                height: (canvas.height * sizeScale / 2).rounded() * 2
             )
         }
         let frameRate = plan.fps.map { Float($0) } ?? (loaded.map(\.frameRate).max() ?? 30)
 
         func timeMap(for item: Loaded) -> TimeMap {
             if let hold = item.plan.hold {
-                let start = min(max(item.plan.trimIn, 0), max(item.duration.seconds - 0.02, 0))
-                let length = min(0.01, max(item.duration.seconds - start, 0.005))
+                let start = min(max(item.plan.trimIn, 0), max(item.duration.seconds - 0.1, 0))
+                // Au moins une image (1/30 s) : un morceau plus court qu'une image pouvait manquer à l'export.
+                let length = min(1.0 / 30, max(item.duration.seconds - start, 0.005))
                 let seconds = max(hold, 0.1)
                 return TimeMap(slices: [TimeMap.Slice(sourceStart: start, sourceEnd: start + length,
                                                       outputStart: 0, outputEnd: seconds, speed: length / seconds)])
@@ -228,7 +236,7 @@ enum VideoPipeline {
                             trackID: item.video.trackID,
                             orientation: FrameRenderer.orientation(for: item.preferred),
                             sourceSize: item.orientedSize,
-                            canvasSize: canvas,
+                            canvasSize: finalSize,
                             finalSize: finalSize,
                             clipOffset: 0,
                             effects: plan.effects,
@@ -366,26 +374,34 @@ enum VideoPipeline {
                 }
             }
         }
-        // Effets sonores : une piste audio par son, pour qu'ils puissent se chevaucher.
-        for sound in plan.sounds.prefix(60) {
+        // Effets sonores : les sons qui ne se chevauchent pas partagent une piste (4 pistes suffisent en général).
+        var lanes: [(track: AVMutableCompositionTrack, parameters: AVMutableAudioMixInputParameters, end: CMTime)] = []
+        for sound in plan.sounds.sorted(by: { $0.start < $1.start }).prefix(60) {
             let asset = AVURLAsset(url: sound.url)
             guard let source = try? await asset.loadTracks(withMediaType: .audio).first,
                   let length = try? await asset.load(.duration), length.seconds.isFinite,
-                  sound.start < outputDuration.seconds,
-                  let track = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid)
+                  sound.start < outputDuration.seconds
             else { continue }
             // Un son qui commencerait avant 0 est tronqué à son début.
             let skip = max(-sound.start, 0)
             let at = CMTime(seconds: max(sound.start, 0), preferredTimescale: 600)
             let usable = CMTimeMinimum(length - CMTime(seconds: skip, preferredTimescale: 600), outputDuration - at)
             guard usable > .zero else { continue }
-            try? track.insertTimeRange(
+            var index = lanes.firstIndex { $0.end <= at }
+            if index == nil {
+                guard let created = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid)
+                else { continue }
+                lanes.append((created, AVMutableAudioMixInputParameters(track: created), .zero))
+                index = lanes.count - 1
+            }
+            guard let lane = index else { continue }
+            try? lanes[lane].track.insertTimeRange(
                 CMTimeRange(start: CMTime(seconds: skip, preferredTimescale: 600), duration: usable), of: source, at: at
             )
-            let parameters = AVMutableAudioMixInputParameters(track: track)
-            parameters.setVolume(Float(sound.volume), at: .zero)
-            mixParameters.append(parameters)
+            lanes[lane].parameters.setVolume(Float(sound.volume), at: at)
+            lanes[lane].end = at + usable
         }
+        for lane in lanes { mixParameters.append(lane.parameters) }
         if !mixParameters.isEmpty {
             let mix = AVMutableAudioMix()
             mix.inputParameters = mixParameters
@@ -409,7 +425,7 @@ enum VideoPipeline {
                 trackID: track.trackID,
                 orientation: FrameRenderer.orientation(for: entry.item.preferred),
                 sourceSize: entry.item.orientedSize,
-                canvasSize: canvas,
+                canvasSize: finalSize,
                 finalSize: finalSize,
                 clipOffset: entry.start.seconds,
                 effects: plan.effects,
@@ -513,10 +529,20 @@ enum VideoPipeline {
         return Double(max(size.width, size.height))
     }
 
+    /// Supprime les exports précédents restés dans le dossier temporaire (un export 4K pèse des centaines de Mo).
+    private static func removeOldExports() {
+        let directory = FileManager.default.temporaryDirectory
+        let files = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []
+        for file in files where file.lastPathComponent.hasPrefix("VYRO-") && file.pathExtension == "mp4" {
+            try? FileManager.default.removeItem(at: file)
+        }
+    }
+
     /// Exporte le montage dans un fichier .mp4 temporaire, avec le MÊME pipeline que l'aperçu.
     static func export(plan: RenderPlan,
                        preset: ExportPreset = .original,
                        progress: @escaping (Double) -> Void) async throws -> URL {
+        removeOldExports()
         var plan = plan
         plan.fps = preset.fps
         if let side = preset.longSide, let first = plan.clips.first,
@@ -548,11 +574,19 @@ enum VideoPipeline {
             }
         }
 
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            session.exportAsynchronously { continuation.resume() }
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                session.exportAsynchronously { continuation.resume() }
+            }
+        } onCancel: {
+            session.cancelExport()
         }
         poller.cancel()
 
+        if Task.isCancelled || session.status == .cancelled {
+            try? FileManager.default.removeItem(at: output)
+            throw PipelineError.cancelled
+        }
         guard session.status == .completed else {
             throw PipelineError.exportFailed(session.error?.localizedDescription ?? "erreur inconnue")
         }

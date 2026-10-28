@@ -19,9 +19,38 @@ enum ProjectStore {
     }
 
     static var mediaDirectory: URL {
-        let dir = documentsDirectory.appendingPathComponent("Media", isDirectory: true)
+        var dir = documentsDirectory.appendingPathComponent("Media", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        // Les vidéos importées sont des copies : inutile de les mettre dans la sauvegarde iCloud.
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        try? dir.setResourceValues(values)
         return dir
+    }
+
+    /// Supprime les fichiers de Media qu'aucun projet n'utilise plus (vidéos, musiques, calques, analyses).
+    /// Les fichiers de moins de 10 minutes sont gardés : un import peut ne pas être encore enregistré.
+    static func cleanupUnusedMedia() {
+        var used = Set<String>()
+        for project in loadAll() {
+            for clip in project.tracks.flatMap(\.clips) {
+                used.insert(clip.mediaFileName)
+                used.insert(clip.mediaFileName + ".stab.json")
+                if let music = clip.musicFileName {
+                    used.insert(music)
+                    used.insert(music + ".beats.json")
+                }
+                for sticker in clip.stickers ?? [] {
+                    if let name = sticker.fileName { used.insert(name) }
+                }
+            }
+        }
+        let files = (try? FileManager.default.contentsOfDirectory(
+            at: mediaDirectory, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
+        for file in files where !used.contains(file.lastPathComponent) {
+            let date = (try? file.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+            if Date().timeIntervalSince(date) > 600 { try? FileManager.default.removeItem(at: file) }
+        }
     }
 
     static func save(_ project: ProjectModel) throws {

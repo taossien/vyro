@@ -138,3 +138,13 @@ Nouveaux réglages d'étalonnage (tous optionnels, anciens projets inchangés) :
 ## Coupe automatique
 
 Bouton « Coupe auto » (mode avancé) : découpe le montage sur un temps fort sur deux de la musique, sans changer la durée. Annulable.
+
+## Fiabilité et performance (analyse du 28 octobre)
+
+- Aperçu calculé à 1280 px au plus, rendu à la taille finale de sortie (textes nets en 4K, 1080p plus rapide).
+- Export : écran gardé allumé, tâche d'arrière-plan, bouton Annuler, anciens exports supprimés.
+- Aperçu agrandi (42 % de l'écran), pistes de timeline plus hautes.
+- Alerte si un effet sonore est introuvable ; sons regroupés sur peu de pistes audio ; sons retirés pendant la transcription.
+- Sauvegarde du projet regroupée, reconstructions d'aperçu numérotées, défilement de la timeline fluide.
+- Image figée d'au moins une image ; image noire plutôt qu'un export qui échoue.
+- Indicateur pendant l'import ; médias inutilisés supprimés à la suppression d'un projet ; vidéos exclues de la sauvegarde iCloud.

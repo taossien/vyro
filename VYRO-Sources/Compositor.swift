@@ -96,18 +96,23 @@ final class VYROCompositor: NSObject, AVVideoCompositing {
         queue.async { [self] in
             autoreleasepool {
                 guard let instruction = request.videoCompositionInstruction as? VYROInstruction,
-                      let source = request.sourceFrame(byTrackID: instruction.trackID),
                       let output = request.renderContext.newPixelBuffer() else {
                     request.finish(with: NSError(domain: "VYRO", code: 1, userInfo: [
                         NSLocalizedDescriptionKey: "image source indisponible"
                     ]))
                     return
                 }
-                let image = FrameRenderer.render(
-                    source: CIImage(cvPixelBuffer: source),
-                    time: request.compositionTime.seconds,
-                    instruction: instruction
-                )
+                // Image source manquante (jonction, image figée) : une image noire plutôt qu'un export qui échoue.
+                let image: CIImage
+                if let source = request.sourceFrame(byTrackID: instruction.trackID) {
+                    image = FrameRenderer.render(
+                        source: CIImage(cvPixelBuffer: source),
+                        time: request.compositionTime.seconds,
+                        instruction: instruction
+                    )
+                } else {
+                    image = CIImage(color: .black).cropped(to: CGRect(origin: .zero, size: instruction.finalSize))
+                }
                 context.render(image, to: output,
                                bounds: CGRect(origin: .zero, size: instruction.finalSize),
                                colorSpace: colorSpace)

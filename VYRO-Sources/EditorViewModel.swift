@@ -6,6 +6,7 @@
 
 import Foundation
 import AVFoundation
+import UIKit
 
 @MainActor
 final class EditorViewModel: ObservableObject {
@@ -42,6 +43,12 @@ final class EditorViewModel: ObservableObject {
     private var redoStack: [[ClipModel]] = []
     private var lastUndoRecord = Date.distantPast
     private var statusObservation: NSKeyValueObservation?
+    private var rebuildToken = 0
+    private var persistTask: Task<Void, Never>?
+    private var exportTask: Task<Void, Never>?
+    private var backgroundTask = UIBackgroundTaskIdentifier.invalid
+    /// Vrai pendant la copie d'une vidéo choisie dans Photos (iCloud peut mettre longtemps).
+    @Published var isImporting = false
 
     init(project: ProjectModel? = nil) {
         if let project = project {
@@ -168,6 +175,10 @@ final class EditorViewModel: ObservableObject {
 
     func addSound(_ kind: SoundKind, at time: Double? = nil) {
         guard hasClip, duration > 0 else { return }
+        guard kind.url != nil else {
+            errorMessage = "Le son « " + kind.title + " » est introuvable dans l'app. Vérifie que les fichiers du dossier Sounds sont bien dans la cible VYRO."
+            return
+        }
         let at = min(max(snap(time ?? playhead), 0), duration)
         let mark = SoundMark(id: UUID(), time: at, kind: kind.rawValue)
         mutateClip { $0.sounds = ($0.sounds ?? []) + [mark] }
@@ -200,6 +211,10 @@ final class EditorViewModel: ObservableObject {
     /// Pose le son choisi sur chaque temps fort de la musique (ou à intervalle régulier sans musique).
     func addSoundsOnBeats(_ kind: SoundKind, every: Int = 2) {
         guard hasClip, duration > 0 else { return }
+        guard kind.url != nil else {
+            errorMessage = "Le son « " + kind.title + " » est introuvable dans l'app. Vérifie que les fichiers du dossier Sounds sont bien dans la cible VYRO."
+            return
+        }
         var marks = rhythmMarks(every: every)
         marks = marks.filter { $0 > 0.2 }
         let existing = sounds
@@ -365,6 +380,7 @@ final class EditorViewModel: ObservableObject {
         let karaoke = subtitleKaraoke && !subtitleWordByWord
         var voicePlan = plan
         voicePlan.musicURL = nil
+        voicePlan.sounds = []
         voicePlan.originalVolume = 1
         Task {
             defer { isTranscribing = false }
@@ -644,7 +660,19 @@ final class EditorViewModel: ObservableObject {
         }
     }
 
+    /// Sauvegarde regroupée : un curseur ou un glissement de calque ne réécrit pas le projet à chaque cran.
     private func persist() {
+        project.modificationDate = Date()
+        persistTask?.cancel()
+        persistTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 700_000_000)
+            guard !Task.isCancelled else { return }
+            self?.persistNow()
+        }
+    }
+
+    private func persistNow() {
+        persistTask?.cancel()
         project.modificationDate = Date()
         try? ProjectStore.save(project)
     }
@@ -653,7 +681,11 @@ final class EditorViewModel: ObservableObject {
 
     /// Vidéo importée : premier clip du montage, ou clip ajouté à la suite.
     func loadClips(_ urls: [URL]) {
-        Task { for url in urls { await addClip(url) } }
+        isImporting = true
+        Task {
+            for url in urls { await addClip(url) }
+            isImporting = false
+        }
     }
 
     func loadClip(at url: URL) { loadClips([url]) }
@@ -1014,8 +1046,15 @@ final class EditorViewModel: ObservableObject {
     /// Reconstruit l'aperçu à partir du plan courant (effets, vitesse, stabilisation).
     private func rebuild() async {
         guard hasClip, !clips.isEmpty else { return }
+        rebuildToken += 1
+        let token = rebuildToken
         do {
-            let built = try await VideoPipeline.build(plan: plan)
+            // L'aperçu est calculé à 1280 px au plus : l'écran d'un téléphone n'en montre pas plus.
+            var previewPlan = plan
+            previewPlan.maxSide = 1280
+            let built = try await VideoPipeline.build(plan: previewPlan)
+            // Une reconstruction plus récente a démarré pendant celle-ci : on abandonne le résultat périmé.
+            guard token == rebuildToken else { return }
             let player = ensurePlayer()
             let wasPlaying = isPlaying
             let resume = min(playhead, max(built.duration - 0.05, 0))
@@ -1089,10 +1128,12 @@ final class EditorViewModel: ObservableObject {
 
     func seek(to seconds: Double) {
         playhead = seconds
+        // Pendant un glissement, une image approchée suffit : les demandes exactes s'empilaient et la timeline traînait.
+        let tolerance = isScrubbing ? CMTime(seconds: 0.12, preferredTimescale: 600) : CMTime.zero
         player?.seek(
             to: CMTime(seconds: seconds, preferredTimescale: 600),
-            toleranceBefore: .zero,
-            toleranceAfter: .zero
+            toleranceBefore: tolerance,
+            toleranceAfter: tolerance
         )
     }
 
@@ -1370,19 +1411,36 @@ final class EditorViewModel: ObservableObject {
         isPlaying = false
         isExporting = true
         exportProgress = 0
+        persistNow()
+        // L'écran reste allumé et l'app demande du temps si on la quitte : un export dure plusieurs minutes.
+        UIApplication.shared.isIdleTimerDisabled = true
+        backgroundTask = UIApplication.shared.beginBackgroundTask(withName: "VYRO export") { [weak self] in
+            Task { @MainActor in self?.cancelExport() }
+        }
         let plan = self.plan
-        Task {
+        exportTask = Task {
             do {
                 let output = try await VideoPipeline.export(plan: plan, preset: preset) { [weak self] value in
                     Task { @MainActor in self?.exportProgress = value }
                 }
                 exportedURL = output
                 showExportDone = true
+            } catch PipelineError.cancelled {
+                // Annulé par l'utilisateur : rien à afficher.
             } catch {
                 errorMessage = error.localizedDescription
             }
             isExporting = false
+            UIApplication.shared.isIdleTimerDisabled = false
+            if backgroundTask != .invalid {
+                UIApplication.shared.endBackgroundTask(backgroundTask)
+                backgroundTask = .invalid
+            }
         }
+    }
+
+    func cancelExport() {
+        exportTask?.cancel()
     }
 
     // MARK: - Cycle de vie
@@ -1401,7 +1459,7 @@ final class EditorViewModel: ObservableObject {
         }
         endObserver = nil
         if hasClip {
-            persist()
+            persistNow()
             let snapshot = project
             Task.detached { await ProjectStore.updateThumbnail(for: snapshot) }
         }
